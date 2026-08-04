@@ -149,10 +149,7 @@ echo "  Host Name"
 echo "================================================"
 echo ""
 
-# Every unit cloned from this image claims the SAME name, and the image's
-# /etc/hosts points that name at an unreachable corporate address
-# (192.0.2.1 RW09.corp.example RW09) — so a device that resolves its
-# own name gets a bogus IP. Naming the card here is the only point in the flow
+# Naming the card here is the only point in the flow
 # where it costs nothing: no device to reach, no reboot. See IMPROVEMENT_PLAN.md
 # D7, and set-hostname.sh for what actually gets written.
 CURRENT_HOSTNAME=""

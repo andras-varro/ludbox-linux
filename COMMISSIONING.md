@@ -63,11 +63,9 @@ The vendor image ships `/etc/hostname` as `RW09` and `/etc/hosts` as:
 
 ```text
 127.0.0.1 localhost
-192.0.2.1 RW09.corp.example RW09
 ```
 
-So **every unit cloned from this image claims the same name, and that name resolves to an
-unreachable corporate address.** Setting `/etc/hostname` alone leaves the bogus mapping in place.
+Setting `/etc/hostname` alone leaves the bogus mapping in place.
 The prompt therefore writes both, via [`set-hostname.sh`](set-hostname.sh) — one implementation
 shared with `setup-device.sh --hostname`, so the offline and over-SSH paths cannot drift.
 
