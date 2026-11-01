@@ -177,6 +177,8 @@ static void publish_safe_area(TouchInput *touch) {
                lo_x, hi_x, lo_y, hi_y, touch->screen_width, touch->screen_height);
 }
 
+static void mt_clear(TouchInput *touch);
+
 int touch_init(TouchInput *touch, const char *device) {
     touch->fd = open(device, O_RDONLY | O_NONBLOCK);
     if (touch->fd == -1) {
@@ -196,6 +198,11 @@ int touch_init(TouchInput *touch, const char *device) {
     touch->last_x = 0;
     touch->last_y = 0;
     touch->touching = false;
+    // Callers may pass malloc'd memory (ScummVM does), and touch_poll() calls
+    // a non-NULL mt_clock, so every multi-touch field is set here
+    mt_clear(touch);
+    touch->mt_clock = NULL;
+    touch->mt_hide = false;
 
     // Query the hardware coordinate range via EVIOCGABS. This is the default
     // raw→screen mapping (works out of the box on this panel); calibration

@@ -5,8 +5,8 @@
  * stands in for the evdev node and the test writes the exact frames
  * kernel/drivers/cy8ctmg120_ts emits (ABS_MT_SLOT, TRACKING_ID, POSITION_X/Y,
  * then ABS_X/ABS_Y/BTN_TOUCH, SYN_REPORT). The clock is injected through
- * TouchInput.mt_clock so 0.9 s and 1.0 s are exact. touch_init() is never
- * called (it opens a device).
+ * TouchInput.mt_clock so 0.9 s and 1.0 s are exact. touch_init() is called
+ * once, on /dev/null, to check it clears that state (group N).
  *
  *   cd native_apps && mkdir -p /mnt/c/work/rw-scratch/f147mt && gcc -Wall -Wextra \
  *     -Wno-unused-parameter -I common -o /mnt/c/work/rw-scratch/f147mt/touch_multi_test \
@@ -209,6 +209,17 @@ int main(void) {
     ev(EV_KEY, BTN_TOUCH, 1); sync_();
     touch_poll(&t);
     CHECK(t.state.pressed && t.state.held);
+
+    /* N: touch_init() clears the multi-touch state itself: ScummVM hands it
+     * malloc'd memory, and a garbage mt_clock is called on the first poll */
+    TouchInput g;
+    memset(&g, 0xA5, sizeof g);
+    CHECK(touch_init(&g, "/dev/null") == 0);
+    CHECK(g.mt_clock == NULL);
+    CHECK(!g.mt_hide && !g.mt_hiding && !g.mt_latch && !g.mt_timing);
+    CHECK(touch_finger_count(&g) == 0);
+    CHECK(!touch_take_two_finger_hold(&g));
+    close(g.fd);
 
     printf("%d checks, %d failed\n", checks, fails);
     return fails ? 1 : 0;
