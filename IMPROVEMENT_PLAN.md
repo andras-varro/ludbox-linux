@@ -83,26 +83,6 @@ Cause not investigated;
 nesting subclass. **Next:** read the upstream change to
 `l2cap_sock_new_connection_cb`; decide between backporting the annotation and dropping lockdep from the image.
 
-### B52. The 8BitDo Pro 2 does not reconnect by itself after a bluetoothd restart — open, confirmed 2026-10-03
-
-**Measured, `.188`, `btmon`.** (1) `/etc/init.d/bluetooth restart` (`device-files/bluetooth`: stop kills `bluetoothd`,
-then `rmmod`s every BT module; start reloads them) disconnects the pad with reason 0x15 "Remote Device Terminated due
-to Power Off"; page scan is off for 8.2 s, then Page Scan on and every paired device is re-added "allow incoming". The
-pad blinked its reconnect LED yet sent **zero** Connect Requests in ~45 s, then powered off; 2 of 2 runs. (2) A
-`bluetoothd`-only restart with the modules kept: page-scan-off window 0.73 s, still zero Connect Requests in 65 s — so
-the dead window is **refuted** as the cause. (3) After either, turning the pad off and on (Home) connects within 1 s:
-Connect Request accepted, stored link key, E0 encryption, HID L2CAP channels; it is paired, bonded and trusted with the
-key loaded. (4) A host-initiated `bluetoothctl connect` while the pad blinked failed with
-`org.bluez.Error.Failed br-connection-create-socket`; the HCI reason was not captured (that `btmon` capture came back
-empty). **Inferred, not measured:** the pad backs off after the 0x15 reason, and the same mechanism sits behind the
-reconnect-on-Home-press behaviour after a reboot recorded in `SYSTEM_ANALYSIS.md`. Only a `bluetooth` component deploy
-or a reboot triggers it; the operator workaround is to power-cycle the pad.
-
-**Next steps.** Capture the host-initiated page with `btmon` (Create Connection status, page timeout) while the pad
-blinks; if host paging works, have the init script or a `bluetoothd` policy connect trusted HID devices after start;
-check whether `bluetoothd` can stop without powering the adapter off, so no 0x15 is sent. **Done when** a restart
-leaves the pad connected, or the pad's behaviour is attributed and the workaround documented.
-
 ### B57. Does MADC ADCIN6 follow what is plugged into the USB port? — open, n=1, needs a joint session (operator replugs while ch6 is read)
 
 `in_voltage6` read 26-29 mV on `.188` while an Xbox 360 pad was on the USB port and a steady 344-364 mV after the BT dongle replaced it
@@ -114,22 +94,15 @@ differ in more than the device, so the link is unproven. It needs a joint sessio
 
 Boot-console errors are defects here. Every line the current image logs (`grep -E '\.(err|warn) ' /var/log/messages` on `.188`, 2026-10-15) is fixed in the tree or recorded as benign in [SYSTEM_ANALYSIS.md](SYSTEM_ANALYSIS.md#7-kernel-policy), except the ones below. **Not yet in an image:** the two `rw20.dts` warnings are fixed but booted only on `.188` as `uImage-b68` (`kernel/README.md`); the rc0/rc6 K links come with the next rootfs build (made by hand on `.188`). **Open:**
 
-1. `twl4030_madc: supply vusb3v1 not found, using dummy regulator`. The fix at cause is `&twl_madc { vusb3v1-supply = <&vusb3v1>; };`, but MADC would then hold the LDO the USB PHY driver also switches on permanently, and ADCIN3..6 readings may change (B57) [inferred from `twl4030-madc.c:889`]. **Operator's call** before it is tried.
-2. bluetoothd `Failed to reset Adv Monitors: Unknown Command (0x01)`: BlueZ 5.66 sends `MGMT_OP_REMOVE_ADV_MONITOR` on every index-added (`src/adapter.c` `reset_adv_monitors`) and our kernel's mgmt 1.14 lacks it. The fix is a BlueZ patch gating it on the supported-commands list, the way `read_commands_complete` sets `KERNEL_*` flags; `bluetooth/build-bluez.sh` has no patch step yet, and a patched BlueZ must reach the source offer. **Operator's call.**
-3. `snd_hwdep: no symbol version for module_layout`: cause not established. First step: `grep -a module_layout` on the deployed `snd-hwdep.ko` and compare with the build that made it.
-4. avahi `No NSS support for mDNS detected`: `BR2_PACKAGE_NSS_MDNS=y` silences it at a rootfs rebuild; the unit publishes and never resolves `.local` itself.
+1. `twl4030_madc: supply vusb3v1 not found, using dummy regulator`. The fix at cause is `&twl_madc { vusb3v1-supply = <&vusb3v1>; };`, but MADC would then hold the LDO the USB PHY driver also switches on permanently, and ADCIN3..6 readings may change (B57) [inferred from `twl4030-madc.c:889`]. **Operator 2026-10-31:** nice-to-have, after B57.
+2. `snd_hwdep: no symbol version for module_layout` (printed once, for the first such module loaded): `usb_host/build-kernel-modules.sh` builds its seven `.ko` on `modules_prepare` from `usb_host/device_config` alone, with no vmlinux or `Module.symvers` and without `kernel/config-changes` or `kernel/patches`, so they carry no symbol CRCs and load unchecked against the running image. Measured 2026-10-31: `grep -a module_layout` finds it in none of `usb_host/modules/*.ko` and in all of `bluetooth/modules/*.ko`, which `kernel/build-bt-modules.sh` builds against the image tree. **Fix:** build the `usb_host` modules the way `kernel/build-bt-modules.sh` does; **done when** each carries `module_layout` and loads with no warning.
+3. avahi `No NSS support for mDNS detected`: `BR2_PACKAGE_NSS_MDNS=y` is in `rootfs/configs/arca_defconfig` (built 2026-10-31: `hosts: files mdns4_minimal [NOTFOUND=return] dns mdns4`); left: boot an image with it and check the line is gone.
 
 **Done when** each line is removed at its cause, or recorded as benign with the reason.
 
 ### B69. Does the SD slot's card-detect switch work, and is it on the pad the DT names? — open, unverified
 
 `kernel/dts/rw20.dts:550` has `cd-gpios = <&gpio4 31 GPIO_ACTIVE_LOW>` (gpio_127, the vendor's value, kept) while the pad it muxes as a GPIO (`rw20.dts:278`) is `sdmmc1_dat4` = gpio_126. **[unverified]** Whether the switch is read at all has not been checked; the card boots, so nothing observed depends on it. **Done when** a card insert and removal is observed in the kernel log, or the property is shown to be inert.
-
-### B74. The 8BitDo pad does not reconnect after it powers itself off for inactivity (`.115`) — open, reported 2026-10-27, not reproduced
-
-**Reported, not measured** (operator, unit `.115`, no capture). The 8BitDo gamepad (Bluetooth) turns itself off after inactivity; turning it on again does not reconnect it. Two workarounds work: reboot the unit with the pad in re-pairing mode, or remove the device in the Bluetooth settings, search again and connect. Pressing Pair on the existing entry gives a Bluetooth error (text not captured). The pad model on `.115` is not confirmed to be the 8BitDo Pro 2 of B52. Unlike B52, where a pad power-cycle reconnects within 1 s after a `bluetoothd` restart, here the power-cycle after idle-off is what fails. **No cause is established.**
-
-**Next steps.** On `.115`, capture `btmon` during the failing power-on and during the failing Pair. Record `bluetoothctl info <pad MAC>` (Paired, Bonded, Trusted, link key present) before and after the idle-off. Confirm the pad model and compare the capture with B52's. **Done when** the failing power-on is attributed by capture, or the workaround is documented.
 
 ### B75. A USB overload drop: recovery and indicator built, the real-drop and BT-pad checks are left — open
 

@@ -130,7 +130,7 @@ bus() { DBUS_SYSTEM_BUS_ADDRESS=$BUS dbus-send --system --print-reply --dest=org
 # <object path> <interface> <property>
 prop() { bus "$1" org.freedesktop.DBus.Properties.Get "string:$2" "string:$3"; }
 
-# The identity of the current hci0 instance: its sysfs inode, new for each re-add (BusyBox here has no stat applet).
+# The identity of the current hci0 instance: its sysfs inode, new for each re-add.
 hci_tok() { ls -dLi "/sys/class/bluetooth/$HCI" 2>/dev/null | awk '{print $1}'; }
 
 # One pass over the bonded devices for adapter instance $1: wait for it to be powered, then connect.

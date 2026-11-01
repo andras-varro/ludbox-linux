@@ -142,7 +142,10 @@ static int kmsg_open(void) {
     return fd;
 }
 
-/* How many records read since the last call carry VBUS_ERROR. */
+/* How many records read since the last call carry a host-side VBUS_ERROR.  Only
+ * "VBUS_ERROR in a_host" is an overload: a rebind with nothing plugged in logs
+ * "VBUS_ERROR in b_idle (80, <SessEnd)" every time (measured on .115), so counting
+ * that one made each recover raise the next fault. */
 static int kmsg_vbus_error(int fd) {
     char rec[1024];
     int seen = 0;
@@ -155,7 +158,7 @@ static int kmsg_vbus_error(int fd) {
         }
         if (n == 0) break;
         rec[n] = '\0';
-        if (strstr(rec, "VBUS_ERROR")) seen++;
+        if (strstr(rec, "VBUS_ERROR in a_host")) seen++;
     }
     return seen;
 }
