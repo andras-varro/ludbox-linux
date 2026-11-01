@@ -73,7 +73,9 @@ The game draws nothing of its own on the start menu (`common/start_menu.h`): `st
 the entries, `start_menu_draw_scores_page(fb, title, table)` the one scores page (attract and game over share it), and
 `start_menu_set_warning()` adds the amber "needs a controller and none is connected" block (`'\n'`-split by `sm_draw_block`,
 the one splitter). PAUSE (Esc / pad Start) exits like BACK; `start_menu_reopen(m, now)` returns to the menu from a game.
-In every game, pause EXIT / BACK / an on-screen exit return to the start menu; only the menu's EXIT leaves for the launcher.
+In every game, pause EXIT / BACK return to the start menu; only the menu's EXIT leaves for the launcher.
+**No game draws an on-screen menu or exit button: two fingers held 1 s pause it** (`touch_set_hide_multi` after init,
+`touch_take_two_finger_hold` each frame into the pad pause, `two_finger_hint_draw` last while playing; a change-only redraw forces `TWO_FINGER_HINT_MS` + 100 ms; ref. `snake.c`).
 
 `ModalDialog`: `modal_dialog_init()` → `modal_dialog_set_button()` per button → `modal_dialog_draw()` after
 all other content but before `fb_swap()` → `modal_dialog_update()` returns `MODAL_ACTION_BTN0..BTN3` or

@@ -931,6 +931,8 @@ group_c() {
 # non-blank and gets zero margin, same as the old one: a user guide that grows without a decision is the shape this group bounds.
 # 2026-10-30: README.md 162 -> 163 for the Retro tile row (the user guide listed no retro app; the save-state caveat lives only there).
 # 2026-10-31: README.md 163 -> 166 for the USB-overload indicator (a user-facing meaning and action; no other user doc holds it).
+# 2026-11-01: README.md 166 -> 167 and native_apps/CLAUDE.md 780 -> 782 for the two-finger pause that replaced every game's on-screen
+# menu button: the user's only touch route to the pause menu, and the authoring rule for a game (operator decision).
 #
 ceilings() {
     # `CEILINGS_FILE` exists only so --self-test can drive this group over a fixture table.
@@ -939,10 +941,10 @@ ceilings() {
 1850	SYSTEM_ANALYSIS.md
 1362	IMPROVEMENT_PLAN.md
 224	HARDWARE.md
-166	README.md
+167	README.md
 208	DEVELOPING.md
 342	CLAUDE.md
-780	native_apps/CLAUDE.md
+782	native_apps/CLAUDE.md
 232	lib/CLAUDE.md
 106	device-files/CLAUDE.md
 324	tests/CLAUDE.md

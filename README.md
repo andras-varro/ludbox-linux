@@ -58,6 +58,8 @@ Control Panel and the games (arrows, Enter/Space, Esc/Backspace to go back). The
 port is micro-USB, so you need a micro-USB-to-USB (OTG) adapter and/or a USB hub. An Xbox
 controller needs a **powered** hub.
 
+Games have no on-screen menu button: **hold two fingers on the screen for a second** to pause (or Start / Esc); a hint says so.
+
 ## 3. The apps
 
 | Tile | What it is |
