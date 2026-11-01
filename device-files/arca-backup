@@ -30,7 +30,9 @@
 # "home/root/data/x/y.hig" by itself; a declared directory carries everything under it).
 #
 # BusyBox tar flags only: c x t v f C T. This BusyBox tar has no -z (measured on .115, 2026-10-18), so
-# gzip runs as a separate step and every reader works on the decompressed copy $TMP/a.tar.
+# gzip is a separate stage of a pipe and nothing large is ever staged: /tmp is a 117 MB tmpfs (RAM) on
+# the unit, and a 2 GB item exported or imported through a temp copy failed. Export streams tar into
+# gzip, writing "$out.part" and renaming it on success; every import reader re-reads the .gz.
 # The info member is tmp/ludbox-backup.info, written under the root's tmp for the length of the
 # export so every member shares one -C and nothing lands in /. Import never extracts it.
 
@@ -38,6 +40,7 @@ ROOT="${ARCA_ROOT:-}"
 ITEMDIR="${ARCA_BACKUP_ITEMS:-$ROOT/opt/arca/backup.d}"   # override: provision.sh runs the repo's items
 INFO=tmp/ludbox-backup.info
 TMP=""
+PART=""
 
 die() {
   echo "error $*"
@@ -46,6 +49,7 @@ die() {
 
 cleanup() {
   [ -n "$TMP" ] && rm -rf "$TMP"
+  [ -n "$PART" ] && rm -f "$PART"
   rm -f "$ROOT/$INFO"
 }
 trap cleanup EXIT
@@ -160,10 +164,18 @@ cmd_export() {
   mkdir -p "$dir" || die "cannot create $dir"
   out="$dir/ludbox-backup-$host-$stamp.tar.gz"
   sort -u "$TMP/list" | prune_covered > "$TMP/list.u"
-  { tar -cf "$TMP/out.tar" -C "${ROOT:-/}" -T "$TMP/list.u" && gzip -c "$TMP/out.tar" > "$out"; } || {
-    rm -f "$out"
+  # Stream tar into gzip. POSIX sh has no pipefail: tar's status goes to a file from inside the left
+  # side of the pipe, gzip's is the pipeline's own. A missing or non-zero status file is a failure.
+  PART="$out.part"
+  rm -f "$TMP/rc"
+  if { { tar -cf - -C "${ROOT:-/}" -T "$TMP/list.u"; echo "$?" > "$TMP/rc"; } | gzip -c > "$PART"; } \
+    && [ "$(cat "$TMP/rc" 2> /dev/null)" = 0 ]; then
+    mv "$PART" "$out" || die "tar failed"
+  else
+    rm -f "$PART" "$out"
     die "tar failed"
-  }
+  fi
+  PART=""
   echo "exported $out"
 }
 
@@ -183,8 +195,8 @@ cmd_archives() {
 read_info() {
   [ -f "$1" ] || die "no such archive $1"
   mktmp
-  gzip -dc "$1" > "$TMP/a.tar" 2> /dev/null || die "not a backup archive $1"
-  tar -xf "$TMP/a.tar" -C "$TMP" "$INFO" 2> /dev/null || die "not a backup archive $1"
+  gzip -dc "$1" 2> /dev/null | tar -xf - -C "$TMP" "$INFO" 2> /dev/null
+  # The status is the last stage's only; a bad gzip stream leaves no info member, which is caught here.
   [ -f "$TMP/$INFO" ] || die "not a backup archive $1"
   INFO_HOST=$(getkey "$TMP/$INFO" host)
   INFO_VERSION=$(getkey "$TMP/$INFO" version)
@@ -235,7 +247,7 @@ member_matches() {
 
 # check_safe <archive>: refuse the whole archive on a member that could land outside the item paths
 check_safe() {
-  tar -tf "$TMP/a.tar" > "$TMP/members" 2> "$TMP/tarerr" || die "cannot read archive $1"
+  gzip -dc "$1" 2> /dev/null | tar -tf - > "$TMP/members" 2> "$TMP/tarerr" || die "cannot read archive $1"
   # BusyBox and GNU tar both strip a leading "/" or "../" and say so on stderr: that is an unsafe member.
   bad=$(sed -n "s/^tar: [Rr]emoving leading '\(.*\)' from \(member\|hard link\)[ a-z]*$/\1/p" "$TMP/tarerr" | head -n 1)
   [ -z "$bad" ] || die "unsafe member $bad"
@@ -246,7 +258,7 @@ check_safe() {
   done < "$TMP/members"
   # Links: a hard link (GNU: type h or "link to"; BusyBox: a "-" line with "name -> target"), or a
   # symlink that another member is written through.
-  tar -tvf "$TMP/a.tar" 2> /dev/null | awk '
+  gzip -dc "$1" 2> /dev/null | tar -tvf - 2> /dev/null | awk '
     { t = substr($0, 1, 1); n = $6 }
     t == "h" || (t != "l" && $7 == "->") || /link to / { print "H " n; next }
     t == "l" { sub(/\/$/, "", n); links[n] = 1 }
@@ -276,10 +288,12 @@ cmd_import() {
       *) die "item not in archive $id" ;;
     esac
   done
+  # One extract pass for every selected item: each pass decompresses the whole
+  # archive, which is minutes on this CPU once retro games are in it.
   reboot=no
+  : > "$TMP/sel"
   for id in "$@"; do
     paths=$(getkey "$ITEMDIR/$id.item" paths)
-    : > "$TMP/sel"
     while IFS= read -r m; do
       s=${m#./}
       s=${s%/}
@@ -292,13 +306,13 @@ cmd_import() {
         fi
       done
     done < "$TMP/members"
-    if [ -s "$TMP/sel" ]; then
-      prune_covered < "$TMP/sel" > "$TMP/sel.p"
-      tar -xf "$TMP/a.tar" -C "${ROOT:-/}" -T "$TMP/sel.p" || die "tar failed on $id"
-    fi
     [ "$(getkey "$ITEMDIR/$id.item" reboot)" = yes ] && reboot=yes
-    echo "imported $id"
   done
+  if [ -s "$TMP/sel" ]; then
+    sort -u "$TMP/sel" | prune_covered > "$TMP/sel.p"
+    gzip -dc "$arc" 2> /dev/null | tar -xf - -C "${ROOT:-/}" -T "$TMP/sel.p" || die "tar failed"
+  fi
+  for id in "$@"; do echo "imported $id"; done
   echo "done reboot=$reboot"
 }
 

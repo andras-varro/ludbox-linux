@@ -154,6 +154,41 @@ done reboot=no" "$(run import "$H/clean.tar.gz" saves)"
 check "its file landed" "saved" "$(cat "$R/home/root/data/scummvm-saves/ok.000" 2> /dev/null)"
 check "negative control: a clean archive is accepted" "imported scores
 done reboot=no" "$(run import "$ARC" scores)"
+echo "== nothing large is staged in TMPDIR (it is a small tmpfs on the unit)"
+# tar and gzip wrappers log any file over 512 KB found in TMPDIR before or after each call. The pre-fix
+# engine stages out.tar / a.tar there, so it is seen; a streaming engine never is.
+mkdir -p "$R/home/root/data/big"
+head -c 2097152 /dev/urandom > "$R/home/root/data/big/blob"
+item big "Big" "home/root/data/big" no no no
+CAP="$W/cap"; CAPLOG="$W/cap.log"; mkdir -p "$CAP"; : > "$CAPLOG"
+for t in tar gzip; do
+  REAL=$(PATH="${SHIM:+$SHIM:}$PATH" command -v $t)
+  # shellcheck disable=SC2016
+  printf '#!/bin/sh\nchk() { find "%s" -type f -size +1024 2>/dev/null | head -n 1 >> "%s"; }\nchk\n"%s" "$@"\nrc=$?\nchk\nexit $rc\n' "$W/tmp" "$CAPLOG" "$REAL" > "$CAP/$t"
+  chmod +x "$CAP/$t"
+done
+SHIM_SAVE="$SHIM"; SHIM="$CAP"
+OUTB=$(run export "$W/stickbig/ludbox-backup" big)
+ARCB=${OUTB#exported }
+check "big export succeeds" "exported" "${OUTB%% *}"
+check "big export staged nothing large in TMPDIR" "0" "$(grep -c . "$CAPLOG")"
+cp "$R/home/root/data/big/blob" "$W/blob.orig"; rm -f "$R/home/root/data/big/blob"
+check "big contents lists the item" "item big unit=no secret=no reboot=no Big" "$(run contents "$ARCB" | grep '^item')"
+check "big import succeeds" "imported big
+done reboot=no" "$(run import "$ARCB" big)"
+check "big import restores the file byte for byte" "same" "$(cmp -s "$W/blob.orig" "$R/home/root/data/big/blob" && echo same)"
+check "big contents and import staged nothing large in TMPDIR" "0" "$(grep -c . "$CAPLOG")"
+check "no partial file left beside the archive" "$(basename "$ARCB")" "$(ls "$W/stickbig/ludbox-backup")"
+echo "== a failing stage of the export pipe is an error and leaves no file"
+rm -rf "$CAP"; mkdir -p "$CAP"
+printf '#!/bin/sh\necho partial\nexit 1\n' > "$CAP/tar"; chmod +x "$CAP/tar"
+check "tar failing: error" "error tar failed" "$(run export "$W/fail1/b" big)"
+check "tar failing: no archive and no .part" "" "$(ls "$W/fail1/b")"
+rm -f "$CAP/tar"
+printf '#!/bin/sh\ncat > /dev/null\nexit 1\n' > "$CAP/gzip"; chmod +x "$CAP/gzip"
+check "gzip failing: error" "error tar failed" "$(run export "$W/fail2/b" big)"
+check "gzip failing: no archive and no .part" "" "$(ls "$W/fail2/b")"
+SHIM="$SHIM_SAVE"
 rm -rf "$W"
 }
 
