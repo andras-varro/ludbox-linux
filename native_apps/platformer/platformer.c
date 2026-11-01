@@ -263,9 +263,8 @@ static bool     jump_press_pending;
 static bool     jump_release_pending;
 static LEDEffect led_effect;
 
-static Button menu_button;
-static Button exit_button;
 static ModalDialog pause_dialog;
+static uint32_t play_start_ms;      /* new game began: drives the two-finger hint */
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * Forward Declarations (for functions referenced before definition)
@@ -822,12 +821,6 @@ static void load_level(int level_num) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void init_buttons(void) {
-    button_init(&menu_button, LAYOUT_MENU_BTN_X, LAYOUT_MENU_BTN_Y,
-                BTN_MENU_WIDTH, BTN_MENU_HEIGHT, "",
-                BTN_MENU_COLOR, COLOR_WHITE, BTN_HIGHLIGHT_COLOR);
-    button_init(&exit_button, LAYOUT_EXIT_BTN_X, LAYOUT_EXIT_BTN_Y,
-                BTN_EXIT_WIDTH, BTN_EXIT_HEIGHT, "",
-                BTN_EXIT_COLOR, COLOR_WHITE, BTN_HIGHLIGHT_COLOR);
     modal_dialog_init(&pause_dialog, "PAUSED", NULL, 2);
     modal_dialog_set_button(&pause_dialog, 0, "RESUME", BTN_COLOR_PRIMARY, COLOR_WHITE);
     modal_dialog_set_button(&pause_dialog, 1, "EXIT", BTN_COLOR_DANGER, COLOR_WHITE);
@@ -868,7 +861,7 @@ static void init_game(void) {
      * boxes were also drawn in different places from the regions that actually
      * received the taps.  This
      * game needs a real controller; draw_all() says so on the start menu
-     * when none is connected, and the touch EXIT button still works either way.
+     * when none is connected, and the start menu's touch EXIT still works either way.
      * Do not add regions back without fixing B2 first. */
 }
 
@@ -1764,8 +1757,6 @@ static void draw_tiles(void) {
 
 static void draw_hud(void) {
     fb_fill_rect(&fb, 0, 0, (int)fb.width, HUD_HEIGHT, RGB(20,20,30));
-    draw_menu_button(&fb, &menu_button);
-    draw_exit_button(&fb, &exit_button);
 
     char buf[48];
     snprintf(buf, sizeof(buf), "SCORE: %d", score);
@@ -1931,8 +1922,16 @@ static void draw_all(void) {
  * Input Handling
  * ═══════════════════════════════════════════════════════════════════════════ */
 
+static void enter_pause(void) {
+    current_screen = SCREEN_PAUSED;
+    modal_dialog_set_focus(&pause_dialog, 0);
+    modal_dialog_show(&pause_dialog);
+}
+
 static void handle_input(void) {
     touch_poll(&touch);
+    /* Taken every frame so a latched hold never goes stale */
+    bool two_finger_menu = touch_take_two_finger_hold(&touch);
     TouchState ts = touch_get_state(&touch);
     gamepad_poll(&gamepad, &input, ts.x, ts.y, ts.pressed);
     uint32_t now = get_time_ms();
@@ -1970,6 +1969,7 @@ static void handle_input(void) {
             led_effect.active = false;
             reset_game();
             current_screen = SCREEN_PLAYING;
+            play_start_ms = now;
         } else {
             demo_sync();
         }
@@ -1988,26 +1988,8 @@ static void handle_input(void) {
         break;   /* handled above; listed so -Wswitch stays quiet */
 
     case SCREEN_PLAYING:
-        if (input.buttons[BTN_ID_PAUSE].pressed) {
-            current_screen = SCREEN_PAUSED;
-            modal_dialog_set_focus(&pause_dialog, 0);
-            modal_dialog_show(&pause_dialog);
-            return;
-        }
-        /* Both buttons are asked EVERY frame, quiet ones included — that is
-         * what clears button_check_press()'s latch.  Guarding these on
-         * ts.pressed made the call with `false` unreachable, so the hamburger
-         * menu fired once per process and then died; EXIT hid it by only ever
-         * needing to fire once.  Reported from the panel 2026-08-10, mechanism
-         * in tests/button_latch_test.c. */
-        if (button_check_tap(&exit_button, &ts, now)) {
-            return_to_menu();
-            return;
-        }
-        if (button_check_tap(&menu_button, &ts, now)) {
-            current_screen = SCREEN_PAUSED;
-            modal_dialog_set_focus(&pause_dialog, 0);
-            modal_dialog_show(&pause_dialog);
+        if (input.buttons[BTN_ID_PAUSE].pressed || two_finger_menu) {
+            enter_pause();
             return;
         }
         break;
@@ -2105,6 +2087,8 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     touch_set_screen_size(&touch, fb.width, fb.height);
+    /* Immersive: no on-screen buttons; a two-finger hold opens the pause dialog */
+    touch_set_hide_multi(&touch, true);
 
     /* Gamepad init */
     gamepad_init(&gamepad);
@@ -2161,6 +2145,9 @@ int main(int argc, char *argv[]) {
 
         if (needs_redraw) {
             draw_all();
+            /* Last draw before the swap: the two-finger menu hint, first seconds of play */
+            if (current_screen == SCREEN_PLAYING && !demo_on())
+                two_finger_hint_draw(&fb, get_time_ms() - play_start_ms);
             fb_swap(&fb);
         }
 

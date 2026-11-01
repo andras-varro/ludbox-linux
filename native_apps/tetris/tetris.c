@@ -160,9 +160,8 @@ bool running = true;
 bool portrait_mode = false;
 int last_touch_x = -1;
 int last_touch_y = -1;
-Button menu_button;
-Button exit_button;
 ModalDialog pause_dialog;
+static uint32_t play_start_ms = 0;      /* new game began: drives the two-finger hint */
 GameScreen current_screen = SCREEN_MENU;
 // Start menu (../common/start_menu.h): START, EXIT (tetris has no difficulty setting)
 StartMenu menu;
@@ -240,15 +239,6 @@ void init_game() {
     hs_load(&hs_table);
     game.high_score = hs_table.count > 0 ? hs_table.entries[0].score : 0;
 
-    // Initialize buttons — LAYOUT_* is SCREEN_SAFE_*-anchored, so the row moves
-    // down with the measured touch inset instead of losing its top rows to it.
-    button_init(&menu_button, LAYOUT_MENU_BTN_X, LAYOUT_MENU_BTN_Y,
-                BTN_MENU_WIDTH, BTN_MENU_HEIGHT, "",
-                BTN_MENU_COLOR, COLOR_WHITE, BTN_HIGHLIGHT_COLOR);
-    button_init(&exit_button, LAYOUT_EXIT_BTN_X, LAYOUT_EXIT_BTN_Y,
-                BTN_EXIT_WIDTH, BTN_EXIT_HEIGHT,
-                "",
-                BTN_EXIT_COLOR, COLOR_WHITE, BTN_HIGHLIGHT_COLOR);
     /* Attract cycle MENU -> DEMO -> SCORES, drawn by draw_game(). */
     start_menu_init(&menu, "TETRIS",
                     "L/R: MOVE   UP/A: ROTATE\n"
@@ -624,8 +614,17 @@ static void return_to_menu(void) {
     current_screen = SCREEN_MENU;
 }
 
+static void enter_pause(void) {
+    current_screen = SCREEN_PAUSED;
+    game.paused = true;
+    modal_dialog_set_focus(&pause_dialog, 0);
+    modal_dialog_show(&pause_dialog);
+}
+
 void handle_input() {
     touch_poll(&touch);
+    /* Taken every frame so a latched hold never goes stale */
+    bool two_finger_menu = touch_take_two_finger_hold(&touch);
     TouchState state = touch_get_state(&touch);
     uint32_t current_time = get_time_ms();
 
@@ -650,6 +649,7 @@ void handle_input() {
             reset_game();
             game.high_score = hs_table.count > 0 ? hs_table.entries[0].score : 0;
             current_screen = SCREEN_PLAYING;
+            play_start_ms = current_time;
             /* Non-blocking: a usleep() here delayed the first frame of play
              * by 100 ms from inside handle_input(). */
             hw_led_pulse_start(&led_pulse, LED_GREEN, 1, 100, current_time);
@@ -690,34 +690,11 @@ void handle_input() {
     }
 
     // Playing screen — gamepad/keyboard: pause
-    if (input.buttons[BTN_ID_PAUSE].pressed) {
-        current_screen = SCREEN_PAUSED;
-        game.paused = true;
-        modal_dialog_set_focus(&pause_dialog, 0);
-        modal_dialog_show(&pause_dialog);
+    if (input.buttons[BTN_ID_PAUSE].pressed || two_finger_menu) {
+        enter_pause();
         return;
     }
 
-    // Playing screen - check menu and exit buttons (touch)
-    if (state.pressed) {
-        // Check exit button (top-right)
-        bool exit_touched = button_is_touched(&exit_button, state.x, state.y);
-        if (button_check_press(&exit_button, exit_touched, current_time)) {
-            return_to_menu();
-            return;
-        }
-
-        // Check menu button (top-left)
-        bool menu_touched = button_is_touched(&menu_button, state.x, state.y);
-        if (button_check_press(&menu_button, menu_touched, current_time)) {
-            current_screen = SCREEN_PAUSED;
-            game.paused = true;
-            modal_dialog_set_focus(&pause_dialog, 0);
-            modal_dialog_show(&pause_dialog);
-            return;
-        }
-    }
-    
     // Touch game controls
     if (state.pressed && !game.game_over && !game.paused) {
         int tx = state.x;
@@ -870,10 +847,6 @@ void draw_playing_field() {
     fb_draw_text(&fb, hud_x, hud_y, score_text, COLOR_WHITE, hud_scale);
     fb_draw_text(&fb, hud_x + score_w + hud_gap, hud_y, level_text, COLOR_CYAN, hud_scale);
 
-    // Draw menu and exit buttons
-    if (!demo_running) draw_menu_button(&fb, &menu_button);
-    if (!demo_running) draw_exit_button(&fb, &exit_button);
-
     // Draw board border
     fb_draw_rect(&fb, board_offset_x - BOARD_BORDER, board_offset_y - BOARD_BORDER,
                  BOARD_WIDTH * cell_size + 2 * BOARD_BORDER,
@@ -909,8 +882,8 @@ void draw_playing_field() {
         int preview_size = cell_size / 3;
         if (preview_size < 6) preview_size = 6;
         int preview_block_w = 4 * preview_size;
-        int next_x = exit_button.x - preview_block_w - 8;
-        int next_y = exit_button.y + (BTN_EXIT_HEIGHT - 4 * preview_size) / 2;
+        int next_x = LAYOUT_EXIT_BTN_X - preview_block_w - 8;
+        int next_y = LAYOUT_EXIT_BTN_Y + (BTN_EXIT_HEIGHT - 4 * preview_size) / 2;
         int label_w = text_measure_width("NEXT:", 1);
         fb_draw_text(&fb, next_x - label_w - 4, next_y, "NEXT:", COLOR_WHITE, 1);
         
@@ -928,8 +901,8 @@ void draw_playing_field() {
         // Draw controls hint below the board (centered on play area)
         int hint_y = board_offset_y + BOARD_HEIGHT * cell_size + 10;
         if (demo_running)   /* hidden MENU button's place: scale 2 is clipped under the board */
-            text_draw_centered(&fb, menu_button.x + menu_button.width / 2,
-                               menu_button.y + menu_button.height / 2,
+            text_draw_centered(&fb, LAYOUT_MENU_BTN_X + BTN_MENU_WIDTH / 2,
+                               LAYOUT_MENU_BTN_Y + BTN_MENU_HEIGHT / 2,
                                "DEMO", COLOR_CYAN, 2);
         else
             text_draw_centered(&fb, board_offset_x + (BOARD_WIDTH * cell_size) / 2, hint_y,
@@ -999,6 +972,10 @@ void draw_game() {
             return_to_menu();
         return;
     }
+
+    // Last draw before the swap: the two-finger menu hint, first seconds of play
+    if (current_screen == SCREEN_PLAYING)
+        two_finger_hint_draw(&fb, get_time_ms() - play_start_ms);
 }
 
 int main(int argc, char *argv[]) {
@@ -1038,6 +1015,9 @@ int main(int argc, char *argv[]) {
         fb_close(&fb);
         return 1;
     }
+    // Immersive: no on-screen buttons; a second finger is hidden from the
+    // touch controls and a two-finger hold opens the pause dialog
+    touch_set_hide_multi(&touch, true);
     
     // Initialize hardware control
     hw_init();
@@ -1109,6 +1089,11 @@ int main(int argc, char *argv[]) {
             needs_redraw = true;
         /* The demo is gameplay: redraw every frame. */
         if (demo_running) needs_redraw = true;
+        /* The two-finger hint fades with time, not input: keep frames coming
+         * while it shows, plus one past its end to clear it. */
+        if (current_screen == SCREEN_PLAYING &&
+            (uint32_t)(get_time_ms() - play_start_ms) < TWO_FINGER_HINT_MS + 100)
+            needs_redraw = true;
 
         /* One bed transition, ABOVE the redraw block and before the pump.
          * ⚠️ The position is load-bearing: SCREEN_GAME_OVER's redraw runs

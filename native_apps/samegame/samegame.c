@@ -185,9 +185,8 @@ static void sfx_tone(int hz, int ms) { if (!demo_on()) audio_tone(&audio, hz, ms
 static void sfx_beep(void)           { if (!demo_on()) audio_beep(&audio); }
 
 /* UI Buttons */
-static Button menu_button;
-static Button exit_button;
 static ModalDialog pause_dialog;
+static uint32_t play_start_ms = 0;      /* new game began: drives the two-finger hint */
 
 /* Color lookup tables */
 static const uint32_t block_colors[NUM_COLORS] = {
@@ -337,13 +336,6 @@ static void init_layout(void) {
     game.grid_x = safe_left + (safe_w - grid_total_w) / 2;
     game.grid_y = safe_top + HUD_HEIGHT + (usable_h - grid_total_h) / 2 + GRID_PADDING;
 
-    /* Initialize buttons */
-    button_init(&menu_button, LAYOUT_MENU_BTN_X, LAYOUT_MENU_BTN_Y,
-                BTN_MENU_WIDTH, BTN_MENU_HEIGHT, "",
-                BTN_MENU_COLOR, COLOR_WHITE, BTN_HIGHLIGHT_COLOR);
-    button_init(&exit_button, LAYOUT_EXIT_BTN_X, LAYOUT_EXIT_BTN_Y,
-                BTN_EXIT_WIDTH, BTN_EXIT_HEIGHT, "",
-                BTN_EXIT_COLOR, COLOR_WHITE, BTN_HIGHLIGHT_COLOR);
     modal_dialog_init(&pause_dialog, "PAUSED", NULL, 2);
     modal_dialog_set_button(&pause_dialog, 0, "RESUME", BTN_COLOR_PRIMARY, COLOR_WHITE);
     modal_dialog_set_button(&pause_dialog, 1, "EXIT", BTN_COLOR_DANGER, COLOR_WHITE);
@@ -1079,10 +1071,6 @@ static void draw_block(int col, int row, bool highlighted, float alpha) {
 }
 
 static void draw_hud(void) {
-    /* Draw menu and exit buttons (none in the demo) */
-    if (!demo_on()) draw_menu_button(&fb, &menu_button);
-    if (!demo_on()) draw_exit_button(&fb, &exit_button);
-
     /* Score — centered at top */
     char score_text[48];
     snprintf(score_text, sizeof(score_text), "SCORE: %d", game.score);
@@ -1405,8 +1393,8 @@ static void draw_game(void) {
     if (demo_on()) {
         fb_clear_draw_offset(&fb);
         /* In the hidden MENU button's place: the centre top is the score's */
-        text_draw_centered(&fb, menu_button.x + menu_button.width / 2,
-                           menu_button.y + menu_button.height / 2,
+        text_draw_centered(&fb, LAYOUT_MENU_BTN_X + BTN_MENU_WIDTH / 2,
+                           LAYOUT_MENU_BTN_Y + BTN_MENU_HEIGHT / 2,
                            "DEMO", COLOR_CYAN, 2);
         return;
     }
@@ -1446,12 +1434,22 @@ static void draw_game(void) {
     /* Draw mouse cursor last (on top of everything) */
     if (input.mouse_connected)
         draw_mouse_cursor(input.mouse_x, input.mouse_y);
+
+    /* Last draw before the swap: the two-finger menu hint, first seconds of play */
+    if (current_screen == SCREEN_PLAYING)
+        two_finger_hint_draw(&fb, get_time_ms() - play_start_ms);
 }
 
 /* ========================================================================== */
 /* INPUT HANDLING                                                             */
 /* ========================================================================== */
 
+/* Open the pause dialog: shared by the pad/keyboard pause and the two-finger hold */
+static void enter_pause(void) {
+    current_screen = SCREEN_PAUSED;
+    modal_dialog_set_focus(&pause_dialog, 0);
+    modal_dialog_show(&pause_dialog);
+}
 /* Helper: process a grid click/tap at the given pixel coordinates.
  * Implements the two-tap mechanic: first click highlights, second removes. */
 static void handle_grid_click(int px, int py) {
@@ -1503,6 +1501,8 @@ static void clear_highlight(void) {
 
 static void handle_input(void) {
     touch_poll(&touch);
+    /* Taken every frame so a latched hold never goes stale */
+    bool two_finger_menu = touch_take_two_finger_hold(&touch);
     TouchState state = touch_get_state(&touch);
     uint32_t now = get_time_ms();
 
@@ -1528,6 +1528,7 @@ static void handle_input(void) {
             demo_running = false;   /* before reset_game()/start_led_effect(): a real game */
             reset_game();
             current_screen = SCREEN_PLAYING;
+            play_start_ms = get_time_ms();
             /* Non-blocking: effect 1 is this game's own 100 ms green flash. */
             start_led_effect(1);
         } else {
@@ -1580,53 +1581,19 @@ static void handle_input(void) {
     }
 
     /* Playing screen — gamepad/keyboard: pause */
-    if (input.buttons[BTN_ID_PAUSE].pressed) {
-        current_screen = SCREEN_PAUSED;
-        modal_dialog_set_focus(&pause_dialog, 0);
-        modal_dialog_show(&pause_dialog);
+    if (input.buttons[BTN_ID_PAUSE].pressed || two_finger_menu) {
+        enter_pause();
         return;
     }
 
-    /* Playing screen — touch input for buttons and grid */
+    /* Playing screen — touch input for the grid */
     if (state.pressed) {
-        /* Check exit button */
-        bool exit_touched = button_is_touched(&exit_button, state.x, state.y);
-        if (button_check_press(&exit_button, exit_touched, now)) {
-            return_to_menu();
-            return;
-        }
-
-        /* Check menu button */
-        bool menu_touched = button_is_touched(&menu_button, state.x, state.y);
-        if (button_check_press(&menu_button, menu_touched, now)) {
-            current_screen = SCREEN_PAUSED;
-            modal_dialog_set_focus(&pause_dialog, 0);
-            modal_dialog_show(&pause_dialog);
-            return;
-        }
-
         /* Grid click via touch */
         handle_grid_click(state.x, state.y);
     }
 
-    /* Playing screen — mouse input for buttons and grid */
+    /* Playing screen — mouse input for the grid */
     if (input.mouse_left_pressed) {
-        /* Check exit button */
-        bool exit_touched = button_is_touched(&exit_button, input.mouse_x, input.mouse_y);
-        if (button_check_press(&exit_button, exit_touched, now)) {
-            return_to_menu();
-            return;
-        }
-
-        /* Check menu button */
-        bool menu_touched = button_is_touched(&menu_button, input.mouse_x, input.mouse_y);
-        if (button_check_press(&menu_button, menu_touched, now)) {
-            current_screen = SCREEN_PAUSED;
-            modal_dialog_set_focus(&pause_dialog, 0);
-            modal_dialog_show(&pause_dialog);
-            return;
-        }
-
         /* Grid click via mouse */
         handle_grid_click(input.mouse_x, input.mouse_y);
     }
@@ -1713,6 +1680,9 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     touch_set_screen_size(&touch, fb.width, fb.height);
+    /* Immersive: no on-screen buttons; a second finger is hidden from the
+     * grid and a two-finger hold opens the pause dialog */
+    touch_set_hide_multi(&touch, true);
 
     /* Gamepad/keyboard/mouse init */
     gamepad_init(&gamepad);
@@ -1766,6 +1736,13 @@ int main(int argc, char *argv[]) {
             game.shake_active            ||
             game.flash_active            ||
             game.perfect_clear) {
+            needs_redraw = true;
+        }
+
+        /* The two-finger hint shows for the first seconds of play, then needs
+         * one more frame to disappear. */
+        if (current_screen == SCREEN_PLAYING && !demo_on() &&
+            get_time_ms() - play_start_ms <= TWO_FINGER_HINT_MS + FRAME_DELAY_IDLE_US / 1000) {
             needs_redraw = true;
         }
 

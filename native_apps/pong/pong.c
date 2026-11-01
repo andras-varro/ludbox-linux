@@ -82,9 +82,8 @@ int play_area_width;
 int play_area_height;
 int offset_x;
 int offset_y;
-Button menu_button;
-Button exit_button;
 ModalDialog pause_dialog;
+static uint32_t play_start_ms = 0;      /* new game began: drives the two-finger hint */
 GameScreen current_screen = SCREEN_MENU;
 
 // Start menu (../common/start_menu.h): START, PLAYERS, DIFFICULTY, EXIT
@@ -150,14 +149,6 @@ void init_game() {
     hs_init(&hs_table, "pong");
     hs_load(&hs_table);
     
-    // Initialize buttons — LAYOUT_* is SCREEN_SAFE_*-anchored, so the row moves
-    // down with the measured touch inset instead of losing its top rows to it.
-    button_init(&menu_button, LAYOUT_MENU_BTN_X, LAYOUT_MENU_BTN_Y,
-                BTN_MENU_WIDTH, BTN_MENU_HEIGHT, "",
-                BTN_MENU_COLOR, COLOR_WHITE, BTN_HIGHLIGHT_COLOR);
-    button_init(&exit_button, LAYOUT_EXIT_BTN_X, LAYOUT_EXIT_BTN_Y,
-                BTN_EXIT_WIDTH, BTN_EXIT_HEIGHT, "",
-                BTN_EXIT_COLOR, COLOR_WHITE, BTN_HIGHLIGHT_COLOR);
     start_menu_init(&menu, "PONG",
                     "TOUCH OR D-PAD: MOVE PADDLE\n"
                     "FIRST TO 11 WINS", get_time_ms());
@@ -558,6 +549,13 @@ static void demo_sync(void) {
     demo_running = want;
 }
 
+static void enter_pause(void) {
+    current_screen = SCREEN_PAUSED;
+    game.paused = true;
+    modal_dialog_set_focus(&pause_dialog, 0);
+    modal_dialog_show(&pause_dialog);
+}
+
 /* Back to the start menu from play, pause or game over: undo what START set up
  * so the menu and its attract cycle behave as on first launch. */
 static void return_to_menu(void) {
@@ -573,6 +571,8 @@ static void return_to_menu(void) {
 
 void handle_input() {
     touch_poll(&touch);
+    /* Taken every frame so a latched hold never goes stale */
+    bool two_finger_menu = touch_take_two_finger_hold(&touch);
     TouchState state = touch_get_state(&touch);
     uint32_t current_time = get_time_ms();
 
@@ -609,6 +609,7 @@ void handle_input() {
             reset_game();
             current_screen = SCREEN_PLAYING;
             play_clock_restart();
+            play_start_ms = get_time_ms();
             /* Non-blocking: a usleep() here delayed the first frame of play
              * by 100 ms from inside handle_input().
              * After reset_game(), which cancels any pending pulse. */
@@ -651,32 +652,9 @@ void handle_input() {
     }
     
     // Playing screen — gamepad/keyboard: pause
-    if (input.buttons[BTN_ID_PAUSE].pressed) {
-        current_screen = SCREEN_PAUSED;
-        game.paused = true;
-        modal_dialog_set_focus(&pause_dialog, 0);
-        modal_dialog_show(&pause_dialog);
+    if (input.buttons[BTN_ID_PAUSE].pressed || two_finger_menu) {
+        enter_pause();
         return;
-    }
-
-    // Playing screen - check menu and exit buttons (touch)
-    if (state.pressed) {
-        // Check exit button (top-right)
-        bool exit_touched = button_is_touched(&exit_button, state.x, state.y);
-        if (button_check_press(&exit_button, exit_touched, current_time)) {
-            return_to_menu();
-            return;
-        }
-        
-        // Check menu button (top-left)
-        bool menu_touched = button_is_touched(&menu_button, state.x, state.y);
-        if (button_check_press(&menu_button, menu_touched, current_time)) {
-            current_screen = SCREEN_PAUSED;
-            game.paused = true;
-            modal_dialog_set_focus(&pause_dialog, 0);
-            modal_dialog_show(&pause_dialog);
-            return;
-        }
     }
     
     if (game.game_over || game.paused) return;
@@ -729,10 +707,6 @@ static void draw_playing_field(void) {
         snprintf(ai_score, sizeof(ai_score), "%s: %d", ai_label(), game.ai.score);
         text_draw_centered(&fb, fb.width * 2 / 3, 35, ai_score, COLOR_RED, 3);
     }
-    
-    // Draw menu and exit buttons
-    if (!demo_on()) draw_menu_button(&fb, &menu_button);
-    if (!demo_on()) draw_exit_button(&fb, &exit_button);
     
     // Draw play area border
     fb_draw_rect(&fb, offset_x - 2, offset_y - 2,
@@ -833,6 +807,10 @@ void draw_game() {
             return_to_menu();
         return;
     }
+
+    // Last draw before the swap: the two-finger menu hint, first seconds of play
+    if (current_screen == SCREEN_PLAYING)
+        two_finger_hint_draw(&fb, get_time_ms() - play_start_ms);
 }
 
 int main(int argc, char *argv[]) {
@@ -872,7 +850,10 @@ int main(int argc, char *argv[]) {
         fb_close(&fb);
         return 1;
     }
-    
+    // Immersive: no on-screen buttons; a second finger is hidden from the
+    // paddle code and a two-finger hold opens the pause dialog
+    touch_set_hide_multi(&touch, true);
+
     // Initialize hardware control
     hw_init();
     hw_set_backlight(100);

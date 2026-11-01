@@ -240,9 +240,8 @@ static int goal_cols[NUM_GOALS];
 static int hud_height;
 
 /* UI Buttons */
-Button menu_button;
-Button exit_button;
 ModalDialog pause_dialog;
+static uint32_t play_start_ms = 0;      /* new game began: drives the two-finger hint */
 
 /* ─── Lane configuration table ──────────────────────────────────────────── */
 
@@ -461,15 +460,6 @@ static float lane_speed_px_s(const Lane *lane) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void init_buttons(void) {
-    /* LAYOUT_* is SCREEN_SAFE_*-anchored, so the row moves down with the measured
-     * touch inset instead of losing its top rows to it.  compute_grid() grows the
-     * HUD band to match — see hud_height. */
-    button_init(&menu_button, LAYOUT_MENU_BTN_X, LAYOUT_MENU_BTN_Y,
-                BTN_MENU_WIDTH, BTN_MENU_HEIGHT, "",
-                BTN_MENU_COLOR, COLOR_WHITE, BTN_HIGHLIGHT_COLOR);
-    button_init(&exit_button, LAYOUT_EXIT_BTN_X, LAYOUT_EXIT_BTN_Y,
-                BTN_EXIT_WIDTH, BTN_EXIT_HEIGHT, "",
-                BTN_EXIT_COLOR, COLOR_WHITE, BTN_HIGHLIGHT_COLOR);
     modal_dialog_init(&pause_dialog, "PAUSED", NULL, 2);
     modal_dialog_set_button(&pause_dialog, 0, "RESUME", BTN_COLOR_PRIMARY, COLOR_WHITE);
     modal_dialog_set_button(&pause_dialog, 1, "EXIT", BTN_COLOR_DANGER, COLOR_WHITE);
@@ -937,8 +927,16 @@ static void demo_sync(void) {
     if (!want && led_effect.active) led_effect.active = false;
 }
 
+static void enter_pause(void) {
+    current_screen = SCREEN_PAUSED;
+    modal_dialog_set_focus(&pause_dialog, 0);
+    modal_dialog_show(&pause_dialog);
+}
+
 static void handle_input(void) {
     touch_poll(&touch);
+    /* Taken every frame so a latched hold never goes stale */
+    bool two_finger_menu = touch_take_two_finger_hold(&touch);
     TouchState ts = touch_get_state(&touch);
     uint32_t now = get_time_ms();
 
@@ -967,6 +965,7 @@ static void handle_input(void) {
             reset_game();
             current_screen = SCREEN_PLAYING;
             last_frame_ms  = get_time_ms();
+            play_start_ms  = last_frame_ms;
             /* Non-blocking: effect 1 is this file's own green flash,
              * serviced by update_led_effects() once per frame. */
             start_led_effect(1);
@@ -1008,29 +1007,9 @@ static void handle_input(void) {
 
     /* ── Playing screen ──────────────────────────────────────────────── */
 
-    // Gamepad/keyboard: pause
-    if (input.buttons[BTN_ID_PAUSE].pressed) {
-        current_screen = SCREEN_PAUSED;
-        modal_dialog_set_focus(&pause_dialog, 0);
-        modal_dialog_show(&pause_dialog);
-        return;
-    }
-
-    // Touch: exit and menu buttons.  Asked EVERY frame, quiet ones included —
-    // that is what clears button_check_press()'s latch.  Behind an ts.pressed
-    // guard the call with `false` is unreachable and the menu fires once per
-    // process; frogger survived it only because a tap in the play area also
-    // reaches the (false) case.  Office Runner, which has no touch gameplay,
-    // did not — reported from the panel 2026-08-10, mechanism in
-    // tests/button_latch_test.c.
-    if (button_check_tap(&exit_button, &ts, now)) {
-        return_to_menu();
-        return;
-    }
-    if (button_check_tap(&menu_button, &ts, now)) {
-        current_screen = SCREEN_PAUSED;
-        modal_dialog_set_focus(&pause_dialog, 0);
-        modal_dialog_show(&pause_dialog);
+    // Gamepad/keyboard pause, or the two-finger hold
+    if (input.buttons[BTN_ID_PAUSE].pressed || two_finger_menu) {
+        enter_pause();
         return;
     }
 
@@ -1431,10 +1410,6 @@ static void draw_hud(void) {
      * (uncalibrated panel, inset 0) puts them level with the buttons without
      * colliding with either. */
     fb_fill_rect(&fb, 0, 0, (int)fb.width, hud_height, RGB(20, 20, 30));
-    if (!demo_on()) {          /* the demo shows no buttons */
-        draw_menu_button(&fb, &menu_button);
-        draw_exit_button(&fb, &exit_button);
-    }
 
     const int hud_scale = 2;
     int hud_h  = text_measure_height(hud_scale);
@@ -1595,6 +1570,10 @@ static void draw_all(void) {
     else
         fb_draw_text(&fb, 10, (int)fb.height - 20,
                      "ARROWS/D-PAD: HOP  ESC: PAUSE", RGB(100, 100, 100), 1);
+
+    // Last draw before the swap: the two-finger menu hint, first seconds of play
+    if (current_screen == SCREEN_PLAYING)
+        two_finger_hint_draw(&fb, get_time_ms() - play_start_ms);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1656,6 +1635,9 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     touch_set_screen_size(&touch, fb.width, fb.height);
+    /* Immersive: no on-screen buttons; a second finger is hidden from the
+     * hop code and a two-finger hold opens the pause dialog */
+    touch_set_hide_multi(&touch, true);
 
     /* Gamepad init */
     gamepad_init(&gamepad);

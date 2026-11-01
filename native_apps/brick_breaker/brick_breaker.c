@@ -288,7 +288,7 @@ static float    paddle_vel;
 static LedPulse     fx_pulse;
 
 /* UI buttons */
-static Button btn_menu, btn_exit;
+static uint32_t play_start_ms = 0;   /* new game began: drives the two-finger hint */
 static Button btn_restart;
 static Button btn_next_level;
 static ModalDialog pause_dialog;
@@ -1608,8 +1608,6 @@ static void draw_game_screen(void) {
                      SCREEN_SAFE_TOP + 40, lbl, RGB(0, 220, 255), 1);
         return;
     }
-    button_draw_menu(&fb, &btn_menu);
-    button_draw_exit(&fb, &btn_exit);
     /* No in-game launch hint: the title screen already says how to launch
      * and move, and the operator found the line redundant. */
 }
@@ -1689,8 +1687,16 @@ static void demo_sync(void) {
  *  Input handling
  * ══════════════════════════════════════════════════════════════════════════ */
 
+static void enter_pause(void) {
+    game.screen = SCREEN_PAUSED;
+    modal_dialog_set_focus(&pause_dialog, 0);
+    modal_dialog_show(&pause_dialog);
+}
+
 static void handle_input(void) {
     touch_poll(&touch);
+    /* Taken every frame so a latched hold never goes stale */
+    bool two_finger_menu = touch_take_two_finger_hold(&touch);
     TouchState st = touch_get_state(&touch);
     uint32_t now = get_time_ms();
     paddle_vel = 0.0f;   /* re-sampled below, and only while playing */
@@ -1713,6 +1719,7 @@ static void handle_input(void) {
             test_mode = (start_menu_value(&menu, menu_diff_idx) == DIFF_EASY);
             demo_running = false;
             reset_game();
+            play_start_ms = get_time_ms();
             audio_beep(&audio);
         } else {
             demo_sync();
@@ -1732,27 +1739,10 @@ static void handle_input(void) {
         break;   /* handled above */
 
     case SCREEN_PLAYING:
-        /* Gamepad/keyboard: pause */
-        if (gp_input.buttons[BTN_ID_PAUSE].pressed) {
-            game.screen = SCREEN_PAUSED;
-            modal_dialog_set_focus(&pause_dialog, 0);
-            modal_dialog_show(&pause_dialog);
+        /* Gamepad/keyboard pause, or a two-finger hold on the panel */
+        if (gp_input.buttons[BTN_ID_PAUSE].pressed || two_finger_menu) {
+            enter_pause();
             return;
-        }
-
-        /* Exit (touch) */
-        if (st.pressed) {
-            if (button_check_press(&btn_exit, button_is_touched(&btn_exit, st.x, st.y), now)) {
-                return_to_menu();
-                return;
-            }
-            /* Menu → pause */
-            if (button_check_press(&btn_menu, button_is_touched(&btn_menu, st.x, st.y), now)) {
-                game.screen = SCREEN_PAUSED;
-                modal_dialog_set_focus(&pause_dialog, 0);
-                modal_dialog_show(&pause_dialog);
-                return;
-            }
         }
 
         /* ── Paddle movement input handling ──────────────────────────────
@@ -1945,6 +1935,9 @@ int main(int argc, char *argv[]) {
         fb_close(&fb);
         return 1;
     }
+    /* Immersive: no on-screen buttons; a second finger is hidden from the
+     * paddle and a two-finger hold opens the pause dialog */
+    touch_set_hide_multi(&touch, true);
 
     hw_init();
     hw_set_backlight(100);
@@ -1988,12 +1981,6 @@ int main(int argc, char *argv[]) {
     hs_load(&hs);
 
     /* UI buttons */
-    button_init(&btn_menu, LAYOUT_MENU_BTN_X, LAYOUT_MENU_BTN_Y,
-                BTN_MENU_WIDTH, BTN_MENU_HEIGHT, "",
-                BTN_MENU_COLOR, COLOR_WHITE, BTN_HIGHLIGHT_COLOR);
-    button_init(&btn_exit, LAYOUT_EXIT_BTN_X, LAYOUT_EXIT_BTN_Y,
-                BTN_EXIT_WIDTH, BTN_EXIT_HEIGHT, "",
-                BTN_EXIT_COLOR, COLOR_WHITE, BTN_HIGHLIGHT_COLOR);
     button_init(&btn_restart, fb.width / 2 - BTN_LARGE_WIDTH / 2,
                 SCREEN_SAFE_BOTTOM - BTN_LARGE_HEIGHT - 30,
                 BTN_LARGE_WIDTH, BTN_LARGE_HEIGHT, "PLAY AGAIN",
@@ -2113,6 +2100,9 @@ int main(int argc, char *argv[]) {
                 break;
             }
             }
+            /* Last draw before the swap: the two-finger menu hint, first seconds of play */
+            if (game.screen == SCREEN_PLAYING && !demo_on())
+                two_finger_hint_draw(&fb, get_time_ms() - play_start_ms);
             fb_swap(&fb);
         }
 
