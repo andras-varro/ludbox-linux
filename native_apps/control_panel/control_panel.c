@@ -22,6 +22,7 @@
  * Includes & Constants
  * â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
+#include "status_hold.h"
 #include "../common/framebuffer.h"
 #include "../common/touch_input.h"
 #include "../common/touch_calib.h"
@@ -350,7 +351,16 @@ static void set_view(AppState *state, const CpPage *page) {
 }
 
 static void handle_page_bar_input(AppState *state, int tx, int ty,
-                                  bool touching, uint32_t now) {
+                                  bool touching, bool pressed, uint32_t now) {
+    /* A kept message (cp_status_keep) stays until the bar is tapped anywhere
+     * but on BACK, which leaves the page and clears it anyway.  The bar was
+     * laid out by the last draw, with the message in the title's place. */
+    if (pressed && state->status_msg[0] && status_hold_is_kept(state->status_hold_ms) &&
+        ty >= bar.L.top && ty < bar.L.bottom && top_bar_hit(&bar.L, tx, ty) != TB_BACK) {
+        state->status_msg[0]  = '\0';
+        state->status_hold_ms = 0;
+        return;
+    }
     if (button_update(&bar.back, tx, ty, touching, now))
         set_view(state, NULL);
 }
@@ -667,12 +677,20 @@ static int config_backup(const Config *cfg, char *out, size_t len) {
     return 1;
 }
 
-void cp_status(const char *msg, bool ok) {
+static void status_post(const char *msg, bool ok, uint32_t hold_ms) {
     if (!g_state) return;
     snprintf(g_state->status_msg, sizeof(g_state->status_msg), "%s", msg);
     g_state->status_time_ms = get_time_ms();
-    g_state->status_hold_ms = STATUS_PAGE_HOLD_MS;
+    g_state->status_hold_ms = hold_ms;
     g_state->status_ok      = ok;
+}
+
+void cp_status(const char *msg, bool ok) {
+    status_post(msg, ok, STATUS_PAGE_HOLD_MS);
+}
+
+void cp_status_keep(const char *msg, bool ok) {
+    status_post(msg, ok, STATUS_HOLD_KEEP);
 }
 
 void cp_confirm(const char *title, const char *message, const char *ok_text,
@@ -992,8 +1010,8 @@ int main(int argc, char *argv[]) {
 
         /* Status message timeout — visual change, and exactly one repaint: the
          * clear is what makes the test false on every later iteration. */
-        uint32_t hold = state.status_hold_ms ? state.status_hold_ms : STATUS_HOLD_MS;
-        if (state.status_msg[0] && now - state.status_time_ms > hold) {
+        if (status_hold_expired(state.status_msg[0] != '\0',state.status_time_ms,
+                                state.status_hold_ms, STATUS_HOLD_MS, now)) {
             state.status_msg[0] = '\0';
             state.status_hold_ms = 0;
             needs_redraw = true;
@@ -1150,7 +1168,7 @@ int main(int argc, char *argv[]) {
         } else if (!state.page) {
             handle_home_input(&state, &ts);
         } else {
-            handle_page_bar_input(&state, tx, ty, touching, now);
+            handle_page_bar_input(&state, tx, ty, touching, ts.pressed && !pick_swallow, now);
             /* BACK may just have closed the page; otherwise it has the input.
              * A page's visual state is its own, so it says when it changed; a
              * queued full-screen run repaints too. */

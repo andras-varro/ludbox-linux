@@ -229,6 +229,7 @@ CTEST_ROWS=(
     "sys_settings_test|-I.|control_panel/sys_settings.c"
     "cp_exec_test|-I.|control_panel/cp_exec.c"
     "backup_parse_test|-I.|control_panel/backup_parse.c"
+    "status_hold_test|-I.|"
     "usb_watch_test|-I.|common/usb_watch.c"
     "usb_bus_test|-I.|control_panel/usb_bus.c"
     "log_filter_test|-I.|control_panel/log_filter.c"

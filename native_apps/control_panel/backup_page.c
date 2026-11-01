@@ -448,7 +448,7 @@ static int marked_argv(char *argv[], int cap, const char *verb, const char *targ
 static void fail_status(const char *what, const char *why) {
     char msg[64];
     snprintf(msg, sizeof msg, "%s: %.*s", what, (int)(sizeof msg - strlen(what) - 3), why);
-    cp_status(msg, false);
+    cp_status_keep(msg, false);
 }
 
 static char exported_path[160];
@@ -458,21 +458,21 @@ static void line_exported(const char *l) {
 
 static void do_export(void) {
     find_stick();
-    if (!stick_ok) { cp_status(stick_note, false); return; }
+    if (!stick_ok) { cp_status_keep(stick_note, false); return; }
     char dir[200], why[64];
     char *argv[MAX_ITEMS + 4];
     backup_dir(dir, sizeof dir);
     if (marked_argv(argv, MAX_ITEMS + 4, "export", dir, home_items) == 0) {
-        cp_status("NOTHING MARKED", false);
+        cp_status_keep("NOTHING MARKED", false);
         return;
     }
     if (run_engine(argv, why, sizeof why) != 0) { fail_status("EXPORT FAILED", why); return; }
     exported_path[0] = '\0';
     each_line(out_buf, line_exported);
-    if (!exported_path[0]) { cp_status("EXPORT GAVE NO FILE NAME", false); return; }
+    if (!exported_path[0]) { cp_status_keep("EXPORT GAVE NO FILE NAME", false); return; }
     char msg[64];
     snprintf(msg, sizeof msg, "EXPORTED %.52s", fm_base(exported_path));
-    cp_status(msg, true);
+    cp_status_keep(msg, true);
 }
 
 static void do_archives(void) {
@@ -510,7 +510,7 @@ static void do_import(void) {
     backup_dir(dir, sizeof dir);
     snprintf(path, sizeof path, "%s/%s", dir, arch[arch_sel]);
     if (marked_argv(argv, MAX_ITEMS + 4, "import", path, imp_items) == 0) {
-        cp_status("NOTHING MARKED", false);
+        cp_status_keep("NOTHING MARKED", false);
         return;
     }
     imported_seen = 0;
@@ -521,7 +521,7 @@ static void do_import(void) {
     char msg[40];
     snprintf(msg, sizeof msg, "IMPORTED %d ITEM%s", done_n, done_n == 1 ? "" : "S");
     go_view(V_DONE);
-    cp_status(msg, true);
+    cp_status_keep(msg, true);
 }
 
 static void run_pending(void) {

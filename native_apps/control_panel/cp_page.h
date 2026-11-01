@@ -136,6 +136,11 @@ GamepadManager *cp_gamepad(void);
  * once more when it expires; the page need not return CP_PAGE_REDRAW for it. */
 void cp_status(const char *msg, bool ok);
 
+/* Like cp_status(), but for a RESULT the operator must not miss: it stays in
+ * the title bar until the page posts another message, the bar is tapped (not
+ * on BACK), or the page is left (BACK or another view clears every message). */
+void cp_status_keep(const char *msg, bool ok);
+
 /* Asks before doing something: the panel's one confirmation dialog, ok_text
  * and CANCEL side by side, drawn
  * over the whole screen.  While it is up it takes all input — the title bar's
