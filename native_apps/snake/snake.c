@@ -115,9 +115,8 @@ static uint32_t demo_next_ms = 0;
 static bool demo_on(void) { return demo_running; }
 
 // UI Buttons
-Button menu_button;
-Button exit_button;
 ModalDialog pause_dialog;
+static uint32_t play_start_ms = 0;      /* new game began: drives the two-finger hint */
 
 // Function prototypes
 void init_game();
@@ -205,14 +204,6 @@ void init_game() {
     cell_size = (usable_width < usable_height ? usable_width : usable_height) / GRID_SIZE;
     grid_offset_x = (fb.width - (GRID_SIZE * cell_size)) / 2;
 
-    // Initialize buttons — LAYOUT_* is SCREEN_SAFE_*-anchored, so the row moves
-    // down with the measured touch inset instead of losing its top rows to it.
-    button_init(&menu_button, LAYOUT_MENU_BTN_X, LAYOUT_MENU_BTN_Y,
-                BTN_MENU_WIDTH, BTN_MENU_HEIGHT, "",
-                BTN_MENU_COLOR, COLOR_WHITE, BTN_HIGHLIGHT_COLOR);
-    button_init(&exit_button, LAYOUT_EXIT_BTN_X, LAYOUT_EXIT_BTN_Y,
-                BTN_EXIT_WIDTH, BTN_EXIT_HEIGHT, "",
-                BTN_EXIT_COLOR, COLOR_WHITE, BTN_HIGHLIGHT_COLOR);
     /* Attract cycle: MENU -> DEMO -> SCORES, the DEMO drawn by draw_game(). */
     start_menu_init(&menu, "SNAKE",
                     "D-PAD/ARROWS: MOVE\n"
@@ -454,8 +445,17 @@ static void demo_sync(void) {
     demo_running = want;
 }
 
+static void enter_pause(void) {
+    current_screen = SCREEN_PAUSED;
+    game.paused = true;
+    modal_dialog_set_focus(&pause_dialog, 0);
+    modal_dialog_show(&pause_dialog);
+}
+
 void handle_input() {
     touch_poll(&touch);
+    /* Taken every frame so a latched hold never goes stale */
+    bool two_finger_menu = touch_take_two_finger_hold(&touch);
     TouchState state = touch_get_state(&touch);
     uint32_t current_time = get_time_ms();
 
@@ -483,6 +483,7 @@ void handle_input() {
             demo_running = false;
             reset_game();
             current_screen = SCREEN_PLAYING;
+            play_start_ms = get_time_ms();
             /* Non-blocking: the hw_set_led() + usleep(100000) + hw_leds_off()
              * that was here froze the panel for 100 ms from inside
              * handle_input() — no touch poll, no redraw, and no audio_pump()
@@ -529,33 +530,13 @@ void handle_input() {
     }
     
     // Playing screen — gamepad/keyboard: pause
-    if (input.buttons[BTN_ID_PAUSE].pressed) {
-        current_screen = SCREEN_PAUSED;
-        game.paused = true;
-        modal_dialog_set_focus(&pause_dialog, 0);
-        modal_dialog_show(&pause_dialog);
+    if (input.buttons[BTN_ID_PAUSE].pressed || two_finger_menu) {
+        enter_pause();
         return;
     }
 
-    // Playing screen - check menu and exit buttons (touch)
+    // Playing screen - touch steering
     if (state.pressed) {
-        // Check exit button (top-right)
-        bool exit_touched = button_is_touched(&exit_button, state.x, state.y);
-        if (button_check_press(&exit_button, exit_touched, current_time)) {
-            return_to_menu();
-            return;
-        }
-
-        // Check menu button (top-left)
-        bool menu_touched = button_is_touched(&menu_button, state.x, state.y);
-        if (button_check_press(&menu_button, menu_touched, current_time)) {
-            current_screen = SCREEN_PAUSED;
-            game.paused = true;
-            modal_dialog_set_focus(&pause_dialog, 0);
-            modal_dialog_show(&pause_dialog);
-            return;
-        }
-        
         // Touch controls for direction (relative to snake head)
         Point head = snake.body[0];
         int head_screen_x = grid_offset_x + head.x * cell_size + cell_size / 2;
@@ -605,9 +586,6 @@ void draw_playing_field() {
     snprintf(high_text, sizeof(high_text), "HIGH: %d", game.high_score);
     text_draw_centered(&fb, fb.width / 2, 53, high_text, COLOR_YELLOW, 2);
     
-    // Draw menu and exit buttons
-    draw_menu_button(&fb, &menu_button);
-    draw_exit_button(&fb, &exit_button);
     }
 
     // Draw grid border
@@ -676,6 +654,10 @@ void draw_game() {
             return_to_menu();
         return;
     }
+
+    // Last draw before the swap: the two-finger menu hint, first seconds of play
+    if (current_screen == SCREEN_PLAYING)
+        two_finger_hint_draw(&fb, get_time_ms() - play_start_ms);
 }
 
 int main(int argc, char *argv[]) {
@@ -735,7 +717,10 @@ int main(int argc, char *argv[]) {
     
     // Set screen size for coordinate scaling
     touch_set_screen_size(&touch, fb.width, fb.height);
-    
+    // Immersive: no on-screen buttons; a second finger is hidden from the
+    // steering code and a two-finger hold opens the pause dialog
+    touch_set_hide_multi(&touch, true);
+
     // Seed random number generator
     srand(time(NULL));
     
