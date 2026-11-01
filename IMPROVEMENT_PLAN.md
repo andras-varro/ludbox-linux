@@ -188,9 +188,16 @@ Two package kinds: a ready-to-use generic card image (`.img`) and a bundle updat
 update normally avoids reflashing, so the unit keeps its host keys. **Done when** a unit updates from a bundle with only the changed
 components installed, from a configured upstream.
 
-### F147. Immersive games with no on-screen menu or close button — open, operator wish 2026-10-12, not designed
+### F147. Immersive games with no on-screen menu or close button — open, operator wish 2026-10-12, designed 2026-11-01
 
-The operator wants games that show no menu or close button at all. Open design question: how a touch-only player pauses and exits (pad and keyboard keep their keys). The games do not carry the shared top bar, so their own exit X is part of the same question. **Done when** the question is answered with the operator and one game follows the answer.
+Our own games drop their on-screen menu and close buttons. Pad and keyboard keep Select+Start and Alt+F12. **Touch: two fingers
+held 1 s opens the same menu**, the game paused while it is open, with a short hint at game start. The panel tracks two
+fingers in separate slots, each kept from touch-down to lift (operator, Input → MULTI-TOUCH, 2026-11-01), but
+games read the single emulated point the driver also sends (`kernel/drivers/cy8ctmg120_ts`): slot 0, or slot 1 when alone [read from the driver]. With two fingers down,
+that point jumps to the remaining finger at a lift, so the gesture must hide touch from the game from the second finger's
+touch-down until all fingers are up. **Steps:** done 2026-11-01, not yet at the panel: `touch_finger_count`, `touch_finger_box` and `touch_take_two_finger_hold` in `touch_input.c` (`touch_multi_test`); left: the gesture once in common code;
+one game converted and checked at the panel; then the rest. **Done when** one game runs with no on-screen buttons and the
+gesture opens its menu at the panel.
 
 ### F157. Physical keyboard and mouse input in the on-screen keyboard — open, operator request 2026-10-22
 
@@ -199,7 +206,7 @@ The operator wants games that show no menu or close button at all. Open design q
 moved the focus but letters were not typed. **Cause, read from source:** a combo node is opened as a mouse (`mouse_is_keyboard`),
 and the mouse read loop only latched its keys, never queueing them; `keyboard_key_event` (`common/gamepad.c`) is now the one
 per-key path for keyboard nodes and combo mouse nodes alike, host-tested in `native_apps/tests/gamepad_text_test.c`; **panel 2026-11-01:** the
-combo keyboard and a wired USB keyboard both type (Ludfin search box). The on-screen keyboard has **no mouse support**: no pointer is drawn over it, with the combo's touchpad, a Bluetooth mouse or a wired USB mouse, while the same pointer works elsewhere (operator, panel), and `common/keyboard.c` never calls `pointer.c` (grep).
+combo keyboard and a wired USB keyboard both type (Ludfin search box). No pointer was drawn over the on-screen keyboard with any mouse (operator, panel), because `common/keyboard.c` never called `pointer.c`; `kb_run` now updates and paints a pointer, a click going through the touch hit-test (`kb_mouse_frame`, host-tested in `keyboard_typed_test`), and `pointer.o` is linked by every app; built 2026-11-01, not yet at the panel.
 **Done when** a mouse pointer shows over the on-screen keyboard and a click presses an
 on-screen key, at the panel.
 

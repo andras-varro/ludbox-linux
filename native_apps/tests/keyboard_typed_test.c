@@ -57,6 +57,34 @@ int main(void) {
     cur = 0; work[0] = '\0';
     CHECK(!kb_apply_key(KB_LAYOUT_FULL, work, &cur, 4, &bs)); /* empty: no underflow */
 
+    /* The mouse: motion shows the arrow, a left click becomes this frame's
+     * touch at it, a real finger wins, and a keyboard-less frame (in == NULL)
+     * leaves the touch alone. */
+    {
+        Pointer p; pointer_init(&p);
+        TouchState ts; memset(&ts, 0, sizeof(ts));
+        InputState in; memset(&in, 0, sizeof(in));
+        in.mouse_dx = 40; in.mouse_dy = 30;
+        kb_mouse_frame(&p, &in, false, &ts);
+        CHECK(p.m.shown && !ts.pressed);
+        int px = p.m.x, py = p.m.y;
+        in.mouse_dx = in.mouse_dy = 0;
+        in.mouse_left_pressed = 1; in.mouse_left_held = 1;
+        kb_mouse_frame(&p, &in, false, &ts);
+        CHECK(ts.pressed && ts.x == px && ts.y == py);
+        in.mouse_left_pressed = 0; in.mouse_left_held = 0; in.mouse_left_released = 1;
+        memset(&ts, 0, sizeof(ts));
+        kb_mouse_frame(&p, &in, false, &ts);
+        CHECK(ts.released && ts.x == px);
+        memset(&ts, 0, sizeof(ts));
+        kb_mouse_frame(&p, NULL, false, &ts);
+        CHECK(!ts.pressed && !ts.released && !ts.held);
+        in.mouse_left_released = 0; in.mouse_left_pressed = 1; in.mouse_left_held = 1;
+        ts.pressed = true; ts.x = 5; ts.y = 6;                 /* a finger */
+        kb_mouse_frame(&p, &in, false, &ts);
+        CHECK(ts.x == 5 && ts.y == 6 && !p.m.shown);
+    }
+
     printf("keyboard_typed_test: %d checks, %d failed\n", checks, fails);
     return fails ? 1 : 0;
 }

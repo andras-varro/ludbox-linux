@@ -255,7 +255,7 @@ step "19/40" "gamepad";      $CC "${WARN[@]}" -O2 -c common/gamepad.c         -o
 GAMEPAD_OBJ=(build/gamepad.o build/input_scan.o build/input_slots.o build/start_menu.o)
 
 COMMON_OBJ=(build/framebuffer.o build/font.o build/touch_input.o build/hardware.o
-            build/common.o build/highscore.o build/keyboard.o
+            build/common.o build/highscore.o build/keyboard.o build/pointer.o
             build/audio.o build/audio_gen.o build/audio_eq.o build/audio_enh.o build/audio_out.o
             build/audio_wav.o build/audio_bed.o build/config.o)
 
@@ -307,7 +307,7 @@ step "26/40" "platformer"
 $CC "${WARN[@]}" -O2 platformer/platformer.c "${COMMON_OBJ[@]}" "${GAMEPAD_OBJ[@]}" -o build/platformer -lm "${AUDIO_LIBS[@]}"
 
 step "27/40" "app_launcher"
-$CC "${WARN[@]}" -O2 -I. app_launcher/app_launcher.c "${COMMON_OBJ[@]}" "${GAMEPAD_OBJ[@]}" build/ppm.o build/icon_grid.o build/top_bar.o build/pointer.o build/logger.o build/product.o common/status_line.c control_panel/cpu_load.c -o build/app_launcher -lm "${AUDIO_LIBS[@]}"
+$CC "${WARN[@]}" -O2 -I. app_launcher/app_launcher.c "${COMMON_OBJ[@]}" "${GAMEPAD_OBJ[@]}" build/ppm.o build/icon_grid.o build/top_bar.o build/logger.o build/product.o common/status_line.c control_panel/cpu_load.c -o build/app_launcher -lm "${AUDIO_LIBS[@]}"
 
 step "28/40" "theremin"
 $CC "${WARN[@]}" -O2 -I. \
@@ -319,7 +319,7 @@ $CC "${WARN[@]}" -O2 -I. \
 # The standalone unified_calibrate was folded into it and deleted — it was a
 # second, independent copy of the same 9-tap fit, carrying the same defect.
 step "29/40" "control_panel"
-$CC "${WARN[@]}" -O2 -I. control_panel/control_panel.c common/eq_panel.c control_panel/cp_page_name.c control_panel/usb_bus.c control_panel/touch_wizard.c control_panel/led_page.c control_panel/monitor_page.c control_panel/cpu_load.c control_panel/soc_temp.c control_panel/mon_graph.c sysmon/mon_ring.c control_panel/info_page.c control_panel/network_page.c control_panel/usb_page.c control_panel/input_page.c control_panel/audio_page.c control_panel/display_page.c control_panel/bluetooth_page.c control_panel/system_page.c control_panel/log_page.c control_panel/log_filter.c control_panel/log_sources.c common/icons.c control_panel/ssh_page.c control_panel/cp_exec.c control_panel/backup_page.c control_panel/backup_parse.c common/usb_watch.c file_manager/fm_core.c build/list_view.o control_panel/sys_settings.c control_panel/bt_ctl.c common/status_line.c "${COMMON_OBJ[@]}" "${GAMEPAD_OBJ[@]}" $CALIB_OBJ build/ui_layout.o build/ui_flow.o build/ui_focus.o build/ppm.o build/icon_grid.o build/top_bar.o build/top_pick.o build/pointer.o build/product.o -o build/control_panel -lm "${AUDIO_LIBS[@]}"
+$CC "${WARN[@]}" -O2 -I. control_panel/control_panel.c common/eq_panel.c control_panel/cp_page_name.c control_panel/usb_bus.c control_panel/touch_wizard.c control_panel/led_page.c control_panel/monitor_page.c control_panel/cpu_load.c control_panel/soc_temp.c control_panel/mon_graph.c sysmon/mon_ring.c control_panel/info_page.c control_panel/network_page.c control_panel/usb_page.c control_panel/input_page.c control_panel/audio_page.c control_panel/display_page.c control_panel/bluetooth_page.c control_panel/system_page.c control_panel/log_page.c control_panel/log_filter.c control_panel/log_sources.c common/icons.c control_panel/ssh_page.c control_panel/cp_exec.c control_panel/backup_page.c control_panel/backup_parse.c common/usb_watch.c file_manager/fm_core.c build/list_view.o control_panel/sys_settings.c control_panel/bt_ctl.c common/status_line.c "${COMMON_OBJ[@]}" "${GAMEPAD_OBJ[@]}" $CALIB_OBJ build/ui_layout.o build/ui_flow.o build/ui_focus.o build/ppm.o build/icon_grid.o build/top_bar.o build/top_pick.o build/product.o -o build/control_panel -lm "${AUDIO_LIBS[@]}"
 
 # Touch diagnostic. It was previously absent from this script, which is why a
 # deployed copy of the old trace tool was stale (pre-bezel); that tool now lives in
@@ -356,17 +356,17 @@ $CC "${WARN[@]}" -O2 -I. "${VTERM_CFLAGS[@]}" terminal/terminal.c control_panel/
 # fm_core.c is its screen-free half (host test tests/file_manager_test.c); the top
 # bar, the pointer and the list widget are the shared objects built above.
 step "34/40" "file_manager"
-$CC "${WARN[@]}" -O2 -I. file_manager/file_manager.c file_manager/fm_core.c "${COMMON_OBJ[@]}" "${GAMEPAD_OBJ[@]}" build/list_view.o build/top_bar.o build/icon_grid.o build/ppm.o build/pointer.o build/ui_flow.o build/ui_focus.o control_panel/cpu_load.c common/status_line.c common/usb_watch.c -o build/file_manager -lm "${AUDIO_LIBS[@]}"
+$CC "${WARN[@]}" -O2 -I. file_manager/file_manager.c file_manager/fm_core.c "${COMMON_OBJ[@]}" "${GAMEPAD_OBJ[@]}" build/list_view.o build/top_bar.o build/icon_grid.o build/ppm.o build/ui_flow.o build/ui_focus.o control_panel/cpu_load.c common/status_line.c common/usb_watch.c -o build/file_manager -lm "${AUDIO_LIBS[@]}"
 
 # ludfin: music client (jellyfin/ sources + the generic Jellyfin layer in jf_shared/).  jf_core/jf_api/jf_model/jf_url/jf_login are screen-free (host tests);
 # jf_ui.c draws, jellyfin.c is the loop.  http.o and json.o come from the common block above.
 step "35/40" "ludfin"
-$CC "${WARN[@]}" -O2 -I. -Icommon -Ijellyfin -Ijf_shared jellyfin/jellyfin.c common/eq_panel.c jellyfin/jf_ui.c jellyfin/jf_core.c jf_shared/jf_api.c jf_shared/jf_tags.c jf_shared/jf_model.c jf_shared/jf_url.c jellyfin/jf_url_music.c jf_shared/jf_login.c jellyfin/jf_queue_store.c jf_shared/jf_art.c jellyfin/jf_fmt_icon.c common/icons.c common/jf_img.c build/http.o build/json.o build/list_view.o build/ui_zone.o build/top_bar.o build/top_pick.o build/icon_grid.o build/ppm.o build/pointer.o build/ui_flow.o build/ui_focus.o control_panel/cpu_load.c common/status_line.c common/logger.c build/product.o "${COMMON_OBJ[@]}" "${GAMEPAD_OBJ[@]}" -o build/ludfin -lm "${SSL_LIBS[@]}" "${AUDIO_LIBS[@]}"
+$CC "${WARN[@]}" -O2 -I. -Icommon -Ijellyfin -Ijf_shared jellyfin/jellyfin.c common/eq_panel.c jellyfin/jf_ui.c jellyfin/jf_core.c jf_shared/jf_api.c jf_shared/jf_tags.c jf_shared/jf_model.c jf_shared/jf_url.c jellyfin/jf_url_music.c jf_shared/jf_login.c jellyfin/jf_queue_store.c jf_shared/jf_art.c jellyfin/jf_fmt_icon.c common/icons.c common/jf_img.c build/http.o build/json.o build/list_view.o build/ui_zone.o build/top_bar.o build/top_pick.o build/icon_grid.o build/ppm.o build/ui_flow.o build/ui_focus.o control_panel/cpu_load.c common/status_line.c common/logger.c build/product.o "${COMMON_OBJ[@]}" "${GAMEPAD_OBJ[@]}" -o build/ludfin -lm "${SSL_LIBS[@]}" "${AUDIO_LIBS[@]}"
 
 # ludkino: video client (jfvideo/ sources + the generic Jellyfin layer in jf_shared/).  jv_core/jv_model/jv_url/jv_settings/jv_tracks are screen-free;
 # jv_ui.c + jv_ui_layout.c draw, jfvideo.c is the loop.  The decoder (vid_*.c) joins the link when the player lands.
 step "36/40" "ludkino"
-$CC "${WARN[@]}" -O2 -I. -Icommon -Ijfvideo -Ijf_shared jfvideo/jfvideo.c common/eq_panel.c jfvideo/jv_ui.c jfvideo/jv_ui_layout.c jfvideo/jv_core.c jfvideo/jv_model.c jfvideo/jv_url.c jfvideo/jv_settings.c jfvideo/jv_last.c jfvideo/jv_tracks.c jfvideo/vid_player.c jfvideo/vid_dec.c jfvideo/vid_ring.c jfvideo/vid_clock.c jfvideo/vid_level.c jfvideo/vid_srt.c jf_shared/jf_api.c jf_shared/jf_tags.c jf_shared/jf_model.c jf_shared/jf_url.c jf_shared/jf_login.c jf_shared/jf_art.c common/icons.c common/jf_img.c build/http.o build/json.o build/list_view.o build/ui_zone.o build/top_bar.o build/icon_grid.o build/ppm.o build/pointer.o build/ui_flow.o build/ui_focus.o control_panel/cpu_load.c common/status_line.c common/logger.c build/product.o "${COMMON_OBJ[@]}" "${GAMEPAD_OBJ[@]}" -o build/ludkino -lm "${SSL_LIBS[@]}" "${AUDIO_LIBS[@]}" -lpthread
+$CC "${WARN[@]}" -O2 -I. -Icommon -Ijfvideo -Ijf_shared jfvideo/jfvideo.c common/eq_panel.c jfvideo/jv_ui.c jfvideo/jv_ui_layout.c jfvideo/jv_core.c jfvideo/jv_model.c jfvideo/jv_url.c jfvideo/jv_settings.c jfvideo/jv_last.c jfvideo/jv_tracks.c jfvideo/vid_player.c jfvideo/vid_dec.c jfvideo/vid_ring.c jfvideo/vid_clock.c jfvideo/vid_level.c jfvideo/vid_srt.c jf_shared/jf_api.c jf_shared/jf_tags.c jf_shared/jf_model.c jf_shared/jf_url.c jf_shared/jf_login.c jf_shared/jf_art.c common/icons.c common/jf_img.c build/http.o build/json.o build/list_view.o build/ui_zone.o build/top_bar.o build/icon_grid.o build/ppm.o build/ui_flow.o build/ui_focus.o control_panel/cpu_load.c common/status_line.c common/logger.c build/product.o "${COMMON_OBJ[@]}" "${GAMEPAD_OBJ[@]}" -o build/ludkino -lm "${SSL_LIBS[@]}" "${AUDIO_LIBS[@]}" -lpthread
 
 # retro: libretro frontend (retro/ sources).  Loads a core .so with dlopen, hence -ldl; the cores themselves are device data, not built here.
 step "37/40" "retro"
@@ -374,15 +374,15 @@ $CC "${WARN[@]}" -O2 -I. -Icommon retro/retro_main.c retro/retro_video.c retro/r
 
 # retro_picker: the launcher-side list of installed cores and their content; it execs /opt/games/retro.
 step "38/40" "retro_picker"
-$CC "${WARN[@]}" -O2 -I. -Icommon retro_picker/retro_picker.c build/list_view.o build/ui_focus.o build/top_bar.o build/top_pick.o build/icon_grid.o build/ppm.o build/pointer.o common/icons.c common/status_line.c control_panel/cpu_load.c "${COMMON_OBJ[@]}" "${GAMEPAD_OBJ[@]}" -o build/retro_picker -lm "${AUDIO_LIBS[@]}"
+$CC "${WARN[@]}" -O2 -I. -Icommon retro_picker/retro_picker.c build/list_view.o build/ui_focus.o build/top_bar.o build/top_pick.o build/icon_grid.o build/ppm.o common/icons.c common/status_line.c control_panel/cpu_load.c "${COMMON_OBJ[@]}" "${GAMEPAD_OBJ[@]}" -o build/retro_picker -lm "${AUDIO_LIBS[@]}"
 
 # frame: the picture frame (library import + slideshow). Carries its own stb_image in frame_core.c, so no common/jf_img.c.
 step "39/40" "frame"
-$CC "${WARN[@]}" -O2 -I. -Icommon -Iframe frame/frame.c frame/frame_core.c frame/frame_logic.c frame/frame_grid.c frame/frame_jf.c jf_shared/jf_url.c jf_shared/jf_login.c build/http.o build/json.o -Ijf_shared build/list_view.o build/pointer.o "${COMMON_OBJ[@]}" "${GAMEPAD_OBJ[@]}" -o build/frame -lm "${SSL_LIBS[@]}" "${AUDIO_LIBS[@]}"
+$CC "${WARN[@]}" -O2 -I. -Icommon -Iframe frame/frame.c frame/frame_core.c frame/frame_logic.c frame/frame_grid.c frame/frame_jf.c jf_shared/jf_url.c jf_shared/jf_login.c build/http.o build/json.o -Ijf_shared build/list_view.o "${COMMON_OBJ[@]}" "${GAMEPAD_OBJ[@]}" -o build/frame -lm "${SSL_LIBS[@]}" "${AUDIO_LIBS[@]}"
 
 # clock: the full-screen clock (alarm, timer, night dim); clock_core.c is its host-tested logic.
 step "40/40" "clock"
-$CC "${WARN[@]}" -O2 -I. -Icommon -Iclock clock/clock.c clock/clock_core.c clock/seg7.c build/pointer.o "${COMMON_OBJ[@]}" "${GAMEPAD_OBJ[@]}" -o build/clock -lm "${AUDIO_LIBS[@]}"
+$CC "${WARN[@]}" -O2 -I. -Icommon -Iclock clock/clock.c clock/clock_core.c clock/seg7.c "${COMMON_OBJ[@]}" "${GAMEPAD_OBJ[@]}" -o build/clock -lm "${AUDIO_LIBS[@]}"
 
 # Collect icon files from source dirs → build/icons/.  control_panel/icons/ holds
 # the control panel's home-grid icons (gen_cp_icons.py); control_panel reads them

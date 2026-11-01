@@ -8,6 +8,7 @@
 #include "keyboard.h"
 #include "common.h"
 #include "term_keymap.h"
+#include "pointer.h"
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -139,6 +140,15 @@ static int kb_row_count(const char **keys) {
 /* Column count = length of first row string */
 static int kb_col_count(const char **keys) {
     return keys[0] ? (int)strlen(keys[0]) : 0;
+}
+
+/* The mouse for one frame: motion moves the arrow and a left click becomes
+ * this frame's touch at it, so the key hit-test below treats a click exactly
+ * like a tap.  `in` is NULL when there is no pad manager (no mouse). */
+static void kb_mouse_frame(Pointer *p, const InputState *in, bool nav_key,
+                           TouchState *ts) {
+    if (!in) return;
+    pointer_update(p, in, ts->pressed, nav_key, ts);
 }
 
 /* Wait for finger lift + 300 ms settle (matches hs_drain_touches pattern) */
@@ -394,6 +404,8 @@ static int kb_run(Framebuffer *fb, TouchInput *touch, GamepadManager *gm,
 
     /* ── Drain stale touches ─────────────────────────────────────────── */
     kb_drain_touches(touch);
+    Pointer ptr;
+    pointer_init(&ptr);   /* after touch_init: SCREEN_SAFE_* */
 
     /* ── Main loop ───────────────────────────────────────────────────── */
     uint32_t last_press = 0;
@@ -498,6 +510,7 @@ static int kb_run(Framebuffer *fb, TouchInput *touch, GamepadManager *gm,
             }
 
             fb_swap(fb);
+            pointer_invalidate(&ptr);   /* the full frame lacks the arrow */
             dirty = false;
         }
 
@@ -513,6 +526,18 @@ static int kb_run(Framebuffer *fb, TouchInput *touch, GamepadManager *gm,
         touch_poll(touch);
         TouchState state = touch_get_state(touch);
         uint32_t   now   = get_time_ms();
+
+        /* The pad is polled once per frame, before the touch hit-test, so the
+         * mouse can turn a click into this frame's touch (kb_mouse_frame). */
+        InputState in;
+        memset(&in, 0, sizeof(in));
+        bool nav_key = false;
+        if (gm) {
+            gamepad_poll(gm, &in, 0, 0, false);
+            for (int b = 0; b < BTN_ID_COUNT; b++)
+                if (in.buttons[b].pressed) nav_key = true;
+        }
+        kb_mouse_frame(&ptr, gm ? &in : NULL, nav_key, &state);
 
         /* What was pressed this frame, by finger or by key: a letter cell
          * (pick_r, pick_c) or an action id (pick_a). */
@@ -541,10 +566,6 @@ static int kb_run(Framebuffer *fb, TouchInput *touch, GamepadManager *gm,
         }
 
         if (gm && pick_r < 0 && pick_a < 0) {
-            InputState in;
-            memset(&in, 0, sizeof(in));
-            gamepad_poll(gm, &in, 0, 0, false);
-
             /* Typed keys.  A character goes straight into the field and hides
              * the focus frame (the next arrow shows it again).  Enter with no
              * focus shown is OK; with it shown, Enter is the ACTION edge below
@@ -649,6 +670,7 @@ static int kb_run(Framebuffer *fb, TouchInput *touch, GamepadManager *gm,
 
         /* Still a full-rate tick when nothing paints: ui_frame_service() above
          * must keep the mix bus advancing, and a tap must be seen promptly. */
+        pointer_paint(&ptr, fb);   /* last: the arrow only, via fb_swap_rect */
         usleep(FRAME_DELAY_ACTIVE_US);
     }
 }

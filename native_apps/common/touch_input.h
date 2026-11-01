@@ -97,6 +97,15 @@ typedef struct {
     bool calibrated;
     TouchCalibration calib;
     bool portrait_mode;      // Portrait mode active (coordinate rotation)
+    // Multi-touch (see "Multi-touch" below). Raw per-slot readings; two slots.
+    bool mt_on[2];
+    int  mt_x[2], mt_y[2];
+    int  mt_slot;                    // slot the next ABS_MT_* event applies to
+    bool mt_timing;                  // two fingers have been down since mt_t0
+    bool mt_fired;                   // the hold event already fired this hold
+    uint32_t mt_t0;                  // millisecond clock when the count reached 2
+    bool mt_latch;                   // a two-finger hold happened, not yet taken
+    uint32_t (*mt_clock)(void);      // NULL = CLOCK_MONOTONIC; tests inject
 } TouchInput;
 
 // Panel positions of the two interior knots, for a given panel extent. Fixed
@@ -210,5 +219,36 @@ int touch_load_calibration(TouchInput *touch, const char *filename);
 
 // Drain all pending events from the touch device (call after reopen)
 void touch_drain_events(TouchInput *touch);
+
+
+// ---- Multi-touch -----------------------------------------------------------
+//
+// touch_poll() also reads the kernel's MT slot protocol (ABS_MT_SLOT,
+// ABS_MT_TRACKING_ID, ABS_MT_POSITION_X/Y) from kernel/drivers/cy8ctmg120_ts:
+// two slots; each frame reports slot 0 then slot 1, a lifted finger as
+// TRACKING_ID -1, and the legacy ABS_X/ABS_Y/BTN_TOUCH pointer follows slot 0
+// (or slot 1 when it is alone). The single-touch TouchState above is unchanged.
+//
+// WITH TWO FINGERS THE CHIP REPORTS A BOUNDING BOX (min X,Y / max X,Y), not the
+// two true positions (SYSTEM_ANALYSIS.md, 3.3 Touch). So there is deliberately
+// no "position of finger 2": touch_finger_box() returns that box. The finger
+// COUNT is reliable; the box corners are what the driver delivers, unfixed.
+
+// Fingers currently down: 0, 1 or 2.
+int touch_finger_count(const TouchInput *touch);
+
+// The bounding box of the two fingers in LOGICAL coordinates (through the same
+// map as the single-touch point), x0<=x1, y0<=y1. Returns true only while the
+// count is 2; otherwise false and the outputs are untouched.
+bool touch_finger_box(TouchInput *touch, int *x0, int *y0, int *x1, int *y1);
+
+// Two fingers down continuously for this long latch the two-finger hold.
+#define TOUCH_HOLD2_MS 1000
+
+// True once per two-finger hold (count >= 2 continuously for TOUCH_HOLD2_MS),
+// then false until the next hold: it clears the latch. The count must drop
+// below 2 to re-arm. Timed by touch_poll() calls, so the caller's loop must
+// keep polling; call this at a safe point each frame (cf. gamepad_take_keys).
+bool touch_take_two_finger_hold(TouchInput *touch);
 
 #endif

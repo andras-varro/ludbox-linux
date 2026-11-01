@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <poll.h>
+#include <time.h>
 #include <linux/input.h>
 
 #define LOGGER_LIB_CLIENT
@@ -442,6 +443,65 @@ static void touch_resync(TouchInput *touch) {
 }
 
 
+static uint32_t mt_now_ms(const TouchInput *touch) {
+    if (touch->mt_clock) return touch->mt_clock();
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    // Wraps harmlessly in uint32_t; callers only subtract. No 64-bit divide:
+    // the nanosecond divisor is a constant.
+    return (uint32_t)ts.tv_sec * 1000u + (uint32_t)(ts.tv_nsec / 1000000);
+}
+
+int touch_finger_count(const TouchInput *touch) {
+    return (touch->mt_on[0] ? 1 : 0) + (touch->mt_on[1] ? 1 : 0);
+}
+
+bool touch_finger_box(TouchInput *touch, int *x0, int *y0, int *x1, int *y1) {
+    if (touch_finger_count(touch) != 2) return false;
+    int ax = touch->mt_x[0], ay = touch->mt_y[0];
+    int bx = touch->mt_x[1], by = touch->mt_y[1];
+    scale_coordinates(touch, &ax, &ay);   // the one raw -> logical map
+    scale_coordinates(touch, &bx, &by);
+    *x0 = ax < bx ? ax : bx;
+    *x1 = ax < bx ? bx : ax;
+    *y0 = ay < by ? ay : by;
+    *y1 = ay < by ? by : ay;
+    return true;
+}
+
+bool touch_take_two_finger_hold(TouchInput *touch) {
+    bool r = touch->mt_latch;
+    touch->mt_latch = false;
+    return r;
+}
+
+// Advance the two-finger hold timer. Called after every batch of events so a
+// hold that produces no further events (a still finger sends none) is still
+// timed.
+static void mt_hold_update(TouchInput *touch, uint32_t now) {
+    if (touch_finger_count(touch) < 2) {
+        touch->mt_timing = false;
+        touch->mt_fired = false;
+        return;
+    }
+    if (!touch->mt_timing) {
+        touch->mt_timing = true;
+        touch->mt_t0 = now;
+    }
+    if (!touch->mt_fired && (uint32_t)(now - touch->mt_t0) >= TOUCH_HOLD2_MS) {
+        touch->mt_fired = true;
+        touch->mt_latch = true;
+    }
+}
+
+static void mt_clear(TouchInput *touch) {
+    touch->mt_on[0] = touch->mt_on[1] = false;
+    touch->mt_slot = 0;
+    touch->mt_timing = false;
+    touch->mt_fired = false;
+    touch->mt_latch = false;
+}
+
 int touch_poll(TouchInput *touch) {
     hw_blank_poll();
     // Non-blocking poll. Process events in arrival order:
@@ -463,6 +523,13 @@ int touch_poll(TouchInput *touch) {
         if (ev.type == EV_ABS) {
             if (ev.code == ABS_X) touch->last_x = ev.value;
             else if (ev.code == ABS_Y) touch->last_y = ev.value;
+            else if (ev.code == ABS_MT_SLOT) touch->mt_slot = ev.value;
+            else if (touch->mt_slot >= 0 && touch->mt_slot < 2) {
+                int s = touch->mt_slot;
+                if (ev.code == ABS_MT_TRACKING_ID) touch->mt_on[s] = ev.value >= 0;
+                else if (ev.code == ABS_MT_POSITION_X) touch->mt_x[s] = ev.value;
+                else if (ev.code == ABS_MT_POSITION_Y) touch->mt_y[s] = ev.value;
+            }
         } else if (ev.type == EV_KEY && ev.code == BTN_TOUCH) {
             if (ev.value == 1 && !touch->touching) {
                 touch->touching = true;
@@ -496,8 +563,13 @@ int touch_poll(TouchInput *touch) {
             }
         }
     }
-    if (sd.resync)
+    if (sd.resync) {
         touch_resync(touch);
+        // The slot state may have lost a lift; a finger still down re-announces
+        // itself on its next report, a lifted one never would.
+        if (!touch->touching) mt_clear(touch);
+    }
+    mt_hold_update(touch, mt_now_ms(touch));
 
     return events_read;
 }
@@ -757,6 +829,7 @@ void touch_drain_events(TouchInput *touch) {
     touch->state.pressed  = false;
     touch->state.released = false;
     touch->state.held     = false;
+    mt_clear(touch);
 
     if (drained > 0)
         LIB_LOG(LOG_LEVEL_DEBUG, "touch_drain_events: discarded %d stale events", drained);
