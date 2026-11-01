@@ -3,7 +3,7 @@
 # Run this script in WSL (Linux), after build-image.sh: the modules link against the
 # Module.symvers and vermagic of ~/rw-kbuild-image, so a .ko built here loads on a unit that
 # boots that image and on no other kernel. The vendor-kernel modules (xpad and friends) are
-# built by usb_host/build-kernel-modules.sh instead, from the unpatched tree.
+# built by usb_host/build-and-deploy.sh instead (kernel/build-bt-modules.sh --set usb), from the same image tree.
 #
 # Produces: <out>/<driver>.ko, one per kernel/drivers/<driver>/, and with --deploy copies them to
 # /lib/modules/4.14.52/extra/ on the unit; touch-module loads only the touch driver there at boot.

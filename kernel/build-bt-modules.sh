@@ -3,7 +3,8 @@
 # Run this script in WSL (Linux), after build-image.sh. The image's config has CONFIG_BT unset, so
 # these modules cannot come from ~/rw-kbuild-image: this script copies that tree to its own work
 # dir, enables BT there as modules, builds, and keeps only the .ko set Bluetooth needs. `--set storage`
-# does the same for usb-storage.ko (USB mass-storage sticks; USB_STORAGE is unset in the image). The image tree is read, never written; the script checks that at the end.
+# does the same for usb-storage.ko (USB mass-storage sticks; USB_STORAGE is unset in the image), and
+# `--set usb` for the Xbox pad and USB audio modules. The image tree is read, never written; the script checks that at the end.
 #
 # The copy's vmlinux is NOT the image. A module built here is safe only if every symbol it imports
 # from vmlinux exists in the image's vmlinux with the same CRC, so that is checked against the
@@ -50,9 +51,20 @@ RUNTIME_ROOTS=(cryptomgr cmac ecb sha256_generic ecdh_generic hmac drbg)
 STORAGE_CONFIG_WANT=("module USB_STORAGE")
 STORAGE_ROOTS=(usb_storage)
 
+# --set usb: the Xbox pad (xpad, joydev, ff-memless) and USB audio class (snd-usb-audio). SND_HWDEP and
+# SND_RAWMIDI have no prompt: SND_USB_AUDIO selects them, and they are listed so the config check
+# below proves they came out as modules (the image exports neither snd_hwdep_new nor snd_rawmidi_new).
+# INPUT_JOYSTICK is only a menu bool; its =y shows in the WARNING list and the CRC check clears it.
+USB_CONFIG_WANT=(
+    "module INPUT_FF_MEMLESS" "module INPUT_JOYDEV" "enable INPUT_JOYSTICK" "module JOYSTICK_XPAD"
+    "enable JOYSTICK_XPAD_FF" "enable JOYSTICK_XPAD_LEDS" "module SND_USB_AUDIO"
+    "module SND_HWDEP" "module SND_RAWMIDI"
+)
+USB_ROOTS=(ff_memless joydev xpad snd_hwdep snd_rawmidi snd_usb_audio snd_usbmidi_lib)
+
 usage() {
     cat <<'EOF'
-Usage: build-bt-modules.sh --out <dir> [--set bt|storage] [--image <work>] [--work <dir>] [--reuse]
+Usage: build-bt-modules.sh --out <dir> [--set bt|storage|usb] [--image <work>] [--work <dir>] [--reuse]
 
 Copies ~/rw-kbuild-image/linux-4.14.52 (built by build-image.sh) to <work>/linux-4.14.52, applies
 kernel/patches-modules/*.patch there, enables BT/btusb/hidp/uhid/uinput/AF_ALG as modules,
@@ -70,9 +82,10 @@ differs from the image's, which the CRC check then has to clear.
                 there are removed.
   --image <work> The image's build tree parent: the --work given to build-image.sh, which must
                 be the image the unit boots (default: ~/rw-kbuild-image).
-  --set <name>  bt (default): the Bluetooth closure. storage: usb-storage.ko.
-  --work <dir>  Work dir in the WSL filesystem (default: ~/rw-kbuild-bt, or ~/rw-kbuild-storage for
-                --set storage). Refused under /mnt.
+  --set <name>  bt (default): the Bluetooth closure. storage: usb-storage.ko. usb: xpad, joydev,
+                ff-memless and the USB audio modules (usb_host/modules/).
+  --work <dir>  Work dir in the WSL filesystem (default: ~/rw-kbuild-bt, ~/rw-kbuild-storage or ~/rw-kbuild-usb for
+                --set storage / usb). Refused under /mnt.
   --reuse       Keep an existing copy (incremental rebuild) instead of re-copying the image tree.
   -h, --help    This text.
 
@@ -84,7 +97,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --out)     shift; OUT_DIR="${1:?--out needs a directory}" ;;
         --work)    shift; WORK_DIR="${1:?--work needs a directory}" ;;
-        --set)     shift; SET="${1:?--set needs bt or storage}" ;;
+        --set)     shift; SET="${1:?--set needs bt, storage or usb}" ;;
         --image)   shift; IMAGE_WORK="${1:?--image needs a directory}" ;;
         --reuse)   REUSE=1 ;;
         -h|--help) usage; exit 0 ;;
@@ -97,7 +110,9 @@ case "$SET" in
     bt)      : "${WORK_DIR:=${HOME}/rw-kbuild-bt}" ;;
     storage) : "${WORK_DIR:=${HOME}/rw-kbuild-storage}"
              CONFIG_WANT=("${STORAGE_CONFIG_WANT[@]}"); ROOTS=("${STORAGE_ROOTS[@]}"); RUNTIME_ROOTS=() ;;
-    *)       echo "ERROR: --set must be bt or storage, not $SET"; exit 1 ;;
+    usb)     : "${WORK_DIR:=${HOME}/rw-kbuild-usb}"
+             CONFIG_WANT=("${USB_CONFIG_WANT[@]}"); ROOTS=("${USB_ROOTS[@]}"); RUNTIME_ROOTS=() ;;
+    *)       echo "ERROR: --set must be bt, storage or usb, not $SET"; exit 1 ;;
 esac
 IMAGE_DIR="${IMAGE_WORK}/linux-4.14.52"
 REF_KO="${IMAGE_WORK}/modules/cy8ctmg120_ts/cy8ctmg120_ts.ko"
@@ -151,7 +166,7 @@ cp "${IMAGE_DIR}/.config" "${KDIR}/.config"
 
 echo; echo "[2/7] Applying module-only patches from ${PATCH_DIR} (set: ${SET})..."
 mapfile -t PATCHES < <(find "$PATCH_DIR" -maxdepth 1 -name '*.patch' 2>/dev/null | sort)
-# The patches are Bluetooth/HID fixes; the storage set has none of its own.
+# The patches are Bluetooth/HID fixes; the storage and usb sets have none of their own.
 [ "$SET" = bt ] || PATCHES=()
 for p in "${PATCHES[@]}"; do
     # --forward on the reverse probe: without it `-R --batch` on an unpatched tree exits 0.

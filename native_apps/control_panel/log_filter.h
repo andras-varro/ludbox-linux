@@ -7,6 +7,8 @@
 #ifndef LOG_FILTER_H
 #define LOG_FILTER_H
 
+#include <stdbool.h>
+
 typedef struct {
     int off;    /* byte offset of the line in the buffer */
     int len;    /* its length, without the newline or a trailing CR */
@@ -36,5 +38,26 @@ int log_is_error(const char *line, int len);
 /* The first visible row `top` clamped so a window of `rows` rows over `n`
  * lines shows no blank space below the last line: 0..max(0, n - rows). */
 int log_clamp_top(int top, int n, int rows);
+
+/* ── Follow (the Log page's tail -f) ─────────────────────────────────────── */
+
+typedef enum {
+    LF_EV_TOGGLE,       /* the FOLLOW button was pressed */
+    LF_EV_SCROLLED_UP,  /* the window moved toward OLDER lines (keys, pad, drag) */
+    LF_EV_CHANGED       /* the polled source differs from what was last read */
+} LogFollowEvent;
+
+typedef enum {
+    LF_ACT_NONE,        /* leave the view where it is */
+    LF_ACT_JUMP_END,    /* show the newest line of what is already read */
+    LF_ACT_RELOAD_END   /* read the source again, then show its newest line */
+} LogFollowAction;
+
+/* The one decision table.  *follow is the state, updated in place; the return
+ * says what the page must do to the view.  Turning ON jumps to the end;
+ * scrolling toward older lines turns it OFF and leaves the view alone; a
+ * changed source reloads only while ON (OFF ignores it: the view is what the
+ * reader chose to look at). */
+LogFollowAction log_follow_step(bool *follow, LogFollowEvent ev);
 
 #endif

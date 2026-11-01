@@ -162,14 +162,15 @@ cd usb_host
 arm-linux-gnueabihf-gcc -static -O2 -o devmem_write devmem_write.c
 ```
 
-### Step 3: Build Xbox controller kernel modules
+### Step 3: Build the Xbox controller and USB audio kernel modules
 
 ```bash
-bash build-kernel-modules.sh
+wsl.exe -e bash -lc "cd /mnt/c/work/roomwizard && kernel/build-bt-modules.sh --set usb --out usb_host/modules"
 ```
 
-This downloads the Linux 4.14.52 kernel source, configures it with the device's config,
-enables the joystick subsystem, and cross-compiles the three modules into `modules/`.
+This needs the image tree `kernel/build-image.sh` leaves in `~/rw-kbuild-image`. It copies that tree,
+enables the joystick subsystem and USB audio as modules, and builds the seven modules against the
+image's Module.symvers, so they carry its symbol CRCs. `build-and-deploy.sh` does this itself.
 
 ### Step 4: Install the device files — what `build-and-deploy.sh` does for you
 
@@ -364,7 +365,6 @@ The DTB `power` property is a separate matter (see Problem 3 above): it sets the
 | File | Runs On | Purpose |
 |------|---------|---------|
 | `build-and-deploy.sh` | Workstation (WSL/Linux) | End-to-end build and deploy automation |
-| `build-kernel-modules.sh` | Workstation (WSL/Linux) | Cross-compile Xbox controller kernel modules |
 | `devmem_write.c` | Compiled for ARM | `/dev/mem` mmap-based read/write tool |
 | [`../probes/*.sh`](../probes/README.md) | Device (need `devmem_write`) | UART3 / pinmux / GPIO measurement probes. Not built, deployed or packaged by anything — a shelf, not a component |
 | `../device-files/enable-usb-host.sh` | Device | Runtime kernel patch + MUSB driver rebind |

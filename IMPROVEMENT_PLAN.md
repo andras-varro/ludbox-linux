@@ -83,16 +83,6 @@ Cause not investigated;
 nesting subclass. **Next:** read the upstream change to
 `l2cap_sock_new_connection_cb`; decide between backporting the annotation and dropping lockdep from the image.
 
-### B68. The syslog shows red lines at every boot — open, operator-observed 2026-10-12
-
-Boot-console errors are defects here. Every line the current image logs (`grep -E '\.(err|warn) ' /var/log/messages` on `.188`, 2026-10-15) is fixed in the tree or recorded as benign in [SYSTEM_ANALYSIS.md](SYSTEM_ANALYSIS.md#7-kernel-policy), except the ones below. **Not yet in an image:** the two `rw20.dts` warnings are fixed but booted only on `.188` as `uImage-b68` (`kernel/README.md`); the rc0/rc6 K links come with the next rootfs build (made by hand on `.188`). **Open:**
-
-1. `twl4030_madc: supply vusb3v1 not found, using dummy regulator`. The fix at cause is `&twl_madc { vusb3v1-supply = <&vusb3v1>; };`, but MADC would then hold the LDO the USB PHY driver also switches on permanently, and ADCIN3..6 readings may change [inferred from `twl4030-madc.c:889`]; re-read ch6 per the MADC table after the change. **Operator 2026-10-31:** nice-to-have.
-2. `snd_hwdep: no symbol version for module_layout` (printed once, for the first such module loaded): `usb_host/build-kernel-modules.sh` builds its seven `.ko` on `modules_prepare` from `usb_host/device_config` alone, with no vmlinux or `Module.symvers` and without `kernel/config-changes` or `kernel/patches`, so they carry no symbol CRCs and load unchecked against the running image. Measured 2026-10-31: `grep -a module_layout` finds it in none of `usb_host/modules/*.ko` and in all of `bluetooth/modules/*.ko`, which `kernel/build-bt-modules.sh` builds against the image tree. **Fix:** build the `usb_host` modules the way `kernel/build-bt-modules.sh` does; **done when** each carries `module_layout` and loads with no warning.
-3. avahi `No NSS support for mDNS detected`: `BR2_PACKAGE_NSS_MDNS=y` is in `rootfs/configs/arca_defconfig` (built 2026-10-31: `hosts: files mdns4_minimal [NOTFOUND=return] dns mdns4`); left: boot an image with it and check the line is gone.
-
-**Done when** each line is removed at its cause, or recorded as benign with the reason.
-
 ### B69. Does the SD slot's card-detect switch work, and is it on the pad the DT names? — open, unverified
 
 `kernel/dts/rw20.dts:550` has `cd-gpios = <&gpio4 31 GPIO_ACTIVE_LOW>` (gpio_127, the vendor's value, kept) while the pad it muxes as a GPIO (`rw20.dts:278`) is `sdmmc1_dat4` = gpio_126. **[unverified]** Whether the switch is read at all has not been checked; the card boots, so nothing observed depends on it. **Done when** a card insert and removal is observed in the kernel log, or the property is shown to be inert.
@@ -125,7 +115,7 @@ length, `remote_efs`) are in .336, the two RTL8761CU ones still apply (`btusb` n
 `CPU_SPECTRE`/`HARDEN_BRANCH_PREDICTOR` exist there and .336 prints the IBE state at boot. **Risks (measured diffs):**
 `omap2430.c` drops `.set_vbus` from `omap2430_ops` (changes the SESSREQ/port-power VBUS path and the IRQ branch of our
 set-vbus-report patch), and `musbhsdma.c` has a TX-completion rework (our audio DMA path). `4.14.52` is pinned in
-`kernel/build-image.sh:18`, `build-modules.sh:15,21`, `build-bt-modules.sh:17,83`, `usb_host/build-kernel-modules.sh:16`,
+`kernel/build-image.sh:18`, `build-modules.sh:15,21`, `build-bt-modules.sh:17,83`,
 `usb_host/build-and-deploy.sh:56`, `bluetooth/build-and-deploy.sh:43`, `device-files/bluetooth:29`, `touch-module:8`,
 `usb-audio-modules:18`, `xpad-modules:8-10` (use `uname -r`), `provision-rules.conf:118,128` and the `release.sh` licence
 text. **Rebase steps, stepwise:** (1) generalise the module paths to `uname -r`; (2) build .336 with our 9 patches and
@@ -204,13 +194,14 @@ The operator wants games that show no menu or close button at all. Open design q
 
 ### F157. Physical keyboard and mouse input in the on-screen keyboard — open, operator request 2026-10-22
 
-`keyboard_enter` (`common/keyboard.c`) now accepts typed letters from a physical keyboard (`kb_apply_key`, `gamepad_text_entry` /
-`gamepad_take_keys`), but it is **host-tested only**. **Panel result, 2026-10-22:** with the operator's Bluetooth keyboard that has an
-integrated touchpad, the arrows move the on-screen focus but typed letters are not picked up. **Hypothesis, unverified:** the combo
-device is classified as a mouse/pointer (`mouse_is_keyboard` in `gamepad.c` decides this), so its letter keys never reach the
-typed-key queue; check the device's evdev nodes and which node the letters arrive on before changing code. The on-screen keyboard
-also has **no mouse support** (no pointer click on a key). **Done when** typing on that Bluetooth keyboard and on a plain USB
-keyboard enters letters, and a mouse click presses an on-screen key, at the panel.
+`keyboard_enter` (`common/keyboard.c`) accepts typed letters from a physical keyboard (`kb_apply_key`, `gamepad_text_entry` /
+`gamepad_take_keys`). **Panel result, 2026-10-22:** on the operator's Bluetooth keyboard with an integrated touchpad, the arrows
+moved the focus but letters were not typed. **Cause, read from source:** a combo node is opened as a mouse (`mouse_is_keyboard`),
+and the mouse read loop only latched its keys, never queueing them; `keyboard_key_event` (`common/gamepad.c`) is now the one
+per-key path for keyboard nodes and combo mouse nodes alike, host-tested in `native_apps/tests/gamepad_text_test.c`; **panel 2026-11-01:** the
+combo keyboard and a wired USB keyboard both type (Ludfin search box). The on-screen keyboard has **no mouse support**: no pointer is drawn over it, with the combo's touchpad, a Bluetooth mouse or a wired USB mouse, while the same pointer works elsewhere (operator, panel), and `common/keyboard.c` never calls `pointer.c` (grep).
+**Done when** a mouse pointer shows over the on-screen keyboard and a click presses an
+on-screen key, at the panel.
 
 ### F160. Does BT/USB audio need the speaker's `>>1` ceiling? — open, operator decision 2026-10-24
 
@@ -219,13 +210,6 @@ but it is spent on BT and USB sinks too, which is 6 dB of headroom they may not 
 soft-limited) already sounds right on a BT speaker [operator, by ear]. **Next:** an A/B on one BT and one USB sink, shift 1 vs 0
 at the same volume step, listening for clipping and limiter pumping. **Done when** the shift per sink class is decided and, if it
 differs, set by the output route rather than the app.
-
-### F156. Log page: a Follow setting — open, operator request 2026-10-22, not designed
-
-The Control Panel's Log page (`control_panel/log_page.c`) shows the selected log read-only. Add a **Follow** setting, true or
-false, for the selected log: on, the view keeps showing the newest lines as the file grows; off, it stays where the reader
-left it. Open design questions: whether the setting is per log or one for the page, and whether it persists across visits.
-**Done when** the page follows a growing log with the setting on and holds still with it off, at the panel.
 
 ### F106. Support BeagleBone Black boards — open, operator idea 2026-10-01, future
 

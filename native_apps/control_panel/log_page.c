@@ -52,6 +52,8 @@
 #define LOG_STATUS_H     12
 #define LOG_REPEAT_FIRST_MS 400
 #define LOG_REPEAT_MS    100
+#define LOG_POLL_MS      1000       /* Follow's look at the source: the top bar's 1 Hz */
+#define LOG_FOLLOW_KEY   "log_follow"
 
 #define KLOG_READ_ALL    3          /* <sys/klog.h> has no names for these */
 #define KLOG_SIZE_BUFFER 10
@@ -86,7 +88,11 @@ static bool    sources_scanned;
 static TopPick pick;                /* the title's drop-down over tab */
 static bool    pick_ready;
 
-static Button  err_btn, refresh_btn, sc_btn[SC_N];
+static Button  err_btn, refresh_btn, sc_btn[SC_N], follow_btn;
+static bool    follow;              /* the persisted "log_follow": newest lines as the source grows */
+static off_t   src_size = -1;       /* st_size when a file tab was last read; -1 = unreadable */
+static unsigned kern_sig;           /* length + hash of the kernel tail last read */
+static uint32_t poll_next;          /* when Follow next looks at the source */
 static int     area_x, area_y, area_w, area_h, rows, status_y;
 
 static int     repeat_btn = -1;
@@ -102,6 +108,7 @@ static void read_file_tail(const char *path) {
     if (fd < 0) { read_err = errno == ENOENT ? "NO SUCH LOG ON THIS UNIT" : "LOG NOT READABLE"; return; }
     struct stat st;
     off_t start = 0;
+    if (fstat(fd, &st) == 0) src_size = st.st_size;
     if (fstat(fd, &st) == 0 && st.st_size > LOG_TAIL_BYTES) {
         start = st.st_size - LOG_TAIL_BYTES;
         cut_tail = true;
@@ -126,6 +133,8 @@ static void read_kernel(void) {
     int got = klogctl(KLOG_READ_ALL, buf, want);
     if (got < 0) { read_err = "KERNEL LOG NOT READABLE"; return; }
     blen = got;
+    kern_sig = (unsigned)got;
+    for (int i = got > 64 ? got - 64 : 0; i < got; i++) kern_sig = kern_sig * 31u + (unsigned char)buf[i];
 }
 
 static void build_vis(void) {
@@ -137,7 +146,7 @@ static void build_vis(void) {
 
 /* Rescans the open tab and lands on its newest line. */
 static void load_tab(void) {
-    blen = 0; cut_tail = false; read_err = NULL; nlines = 0;
+    blen = 0; cut_tail = false; read_err = NULL; nlines = 0; src_size = -1; kern_sig = 0;
     if (tab >= TAB_N)          read_file_tail(extra[tab - TAB_N].path);
     else if (tabs[tab].path)   read_file_tail(tabs[tab].path);
     else                       read_kernel();
@@ -174,11 +183,16 @@ static void refresh_buttons(void) {
     button_set_text(&err_btn, errors_only ? "ERRORS ONLY: ON" : "ERRORS ONLY: OFF");
     button_set_colors(&err_btn, errors_only ? RGB(170, 60, 40) : RGB(80, 80, 80),
                       COLOR_WHITE, BTN_COLOR_HIGHLIGHT);
+    button_set_text(&follow_btn, follow ? "FOLLOW ON" : "FOLLOW OFF");
+    button_set_colors(&follow_btn, follow ? RGB(0, 110, 60) : RGB(80, 80, 80),
+                      COLOR_WHITE, BTN_COLOR_HIGHLIGHT);
 }
 
 /* ── Page hooks ─────────────────────────────────────────────────────────── */
 
-static void log_page_load(const Config *cfg) { (void)cfg; }
+static void log_page_load(const Config *cfg) { follow = config_get_bool(cfg, LOG_FOLLOW_KEY, false); }
+
+static void log_page_reset_defaults(Config *cfg) { (void)cfg; follow = false; refresh_buttons(); }
 
 static void log_page_layout(void) {
     if (!sources_scanned) {
@@ -200,11 +214,14 @@ static void log_page_layout(void) {
     area_h = status_y - LOG_GAP - area_y;
     rows = (area_h - 6) / LOG_LINE_H;
     if (rows < 1) rows = 1;
-    int sh = area_h / SC_N;
+    int sh = area_h / (SC_N + 1);
     for (int i = 0; i < SC_N; i++)
         button_init_full(&sc_btn[i], CONTENT_RIGHT - LOG_STRIP_W, area_y + i * sh,
                          LOG_STRIP_W, sh - 2, sc_label[i], RGB(60, 60, 90), COLOR_WHITE,
                          BTN_COLOR_HIGHLIGHT, 1);
+    button_init_full(&follow_btn, CONTENT_RIGHT - LOG_STRIP_W, area_y + SC_N * sh,
+                     LOG_STRIP_W, sh - 2, "FOLLOW OFF", RGB(80, 80, 80), COLOR_WHITE,
+                     BTN_COLOR_HIGHLIGHT, 1);
     refresh_buttons();
     top = log_clamp_top(top, nvis, rows);
 
@@ -224,6 +241,8 @@ static void log_page_layout(void) {
 
 static void log_page_enter(void) {
     repeat_btn = -1; drag_active = false; prev_touching = false;
+    poll_next = get_time_ms() + LOG_POLL_MS;
+    refresh_buttons();
     load_tab();
 }
 
@@ -231,6 +250,7 @@ static void log_page_draw(Framebuffer *fb) {
     button_draw(fb, &err_btn);
     button_draw(fb, &refresh_btn);
     for (int i = 0; i < SC_N; i++) button_draw(fb, &sc_btn[i]);
+    button_draw(fb, &follow_btn);
 
     fb_fill_rect(fb, area_x, area_y, area_w, area_h, RGB(8, 8, 14));
     fb_draw_rect(fb, area_x, area_y, area_w, area_h, RGB(70, 70, 90));
@@ -273,6 +293,44 @@ static void log_page_draw(Framebuffer *fb) {
 
 /* ── Input ──────────────────────────────────────────────────────────────── */
 
+static bool follow_changed;         /* follow flipped this frame: persist it and repaint the button */
+
+static LogFollowAction follow_event(LogFollowEvent ev) {
+    bool was = follow;
+    LogFollowAction a = log_follow_step(&follow, ev);
+    if (follow != was) follow_changed = true;
+    return a;
+}
+
+/* True when the open source differs from what was last read.  A file is
+ * compared by size (stat, no read); the kernel ring has no cheap size, so it is
+ * read again and its tail signature compared (the view is then at the end, as
+ * Follow keeps it). */
+static bool source_changed(void) {
+    if (tab >= TAB_N || tabs[tab].path) {
+        struct stat st;
+        off_t sz = stat(tab >= TAB_N ? extra[tab - TAB_N].path : tabs[tab].path, &st) == 0 ? st.st_size : -1;
+        return sz != src_size;
+    }
+    unsigned before = kern_sig;
+    load_tab();
+    return kern_sig != before;
+}
+
+/* Same shape as fmt_persist() in system_page.c: the key goes into the file by
+ * re-reading it, then saved. */
+static void follow_persist(Config *mem) {
+    config_set_bool(mem, LOG_FOLLOW_KEY, follow);
+    Config disk;
+    config_init(&disk);
+    config_load(&disk);
+    config_set_bool(&disk, LOG_FOLLOW_KEY, follow);
+    if (config_save(&disk) != 0) {
+        fprintf(stderr, "control_panel: %s save failed\n", LOG_FOLLOW_KEY);
+        cp_status("FOLLOW SAVE FAILED", false);
+    }
+}
+
 /* Moves the window for scroll button i; true if it moved. */
 static bool scroll_by(int i) {
     int before = top;
@@ -286,11 +344,11 @@ static bool scroll_by(int i) {
     case SC_END:  top = nvis; break;
     }
     top = log_clamp_top(top, nvis, rows);
+    if (top < before) follow_event(LF_EV_SCROLLED_UP);
     return top != before;
 }
 
 static CpPageResult log_page_input(Config *cfg, int tx, int ty, bool touching, uint32_t now) {
-    (void)cfg;
     CpPageResult res = CP_PAGE_IDLE;
 
     int picked = pick_ready ? tp_take(&pick) : -1;
@@ -308,6 +366,12 @@ static CpPageResult log_page_input(Config *cfg, int tx, int ty, bool touching, u
     }
     if (button_update(&refresh_btn, tx, ty, touching, now)) {
         load_tab();
+        res = CP_PAGE_REDRAW;
+    }
+
+    if (button_update(&follow_btn, tx, ty, touching, now)) {
+        if (follow_event(LF_EV_TOGGLE) == LF_ACT_JUMP_END) top = log_clamp_top(nvis, nvis, rows);
+        poll_next = now + LOG_POLL_MS;
         res = CP_PAGE_REDRAW;
     }
 
@@ -340,8 +404,26 @@ static CpPageResult log_page_input(Config *cfg, int tx, int ty, bool touching, u
             int before = top;
             top = log_clamp_top(top - d, nvis, rows);
             drag_y += d * LOG_LINE_H;
-            if (top != before) res = CP_PAGE_REDRAW;
+            if (top != before) {
+                res = CP_PAGE_REDRAW;
+                if (top < before) follow_event(LF_EV_SCROLLED_UP);
+            }
         }
+    }
+    /* Follow: look at the source about once a second, only while ON; a frame
+     * is asked for only when it changed, so an idle page produces none. */
+    if (follow && (int32_t)(now - poll_next) >= 0) {
+        poll_next = now + LOG_POLL_MS;
+        if (source_changed() && follow_event(LF_EV_CHANGED) == LF_ACT_RELOAD_END) {
+            load_tab();
+            res = CP_PAGE_REDRAW;
+        }
+    }
+    if (follow_changed) {
+        follow_changed = false;
+        follow_persist(cfg);
+        refresh_buttons();
+        res = CP_PAGE_REDRAW;
     }
     prev_touching = touching;
     return res;
@@ -352,6 +434,7 @@ static int log_page_focusables(UiRect *out, int max) {
     n = focus_add_button(out, n, max, &err_btn);
     n = focus_add_button(out, n, max, &refresh_btn);
     for (int i = 0; i < SC_N; i++) n = focus_add_button(out, n, max, &sc_btn[i]);
+    n = focus_add_button(out, n, max, &follow_btn);
     return n;
 }
 
@@ -366,4 +449,5 @@ const CpPage cp_log_page = {
     .input      = log_page_input,
     .focusables = log_page_focusables,
     .header     = log_page_header,
+    .reset_defaults = log_page_reset_defaults,
 };

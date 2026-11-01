@@ -118,6 +118,36 @@ int main(void) {
     (void)pos;
     gamepad_close(&gm);
 
+    /* 6. a mouse node that carries a keyboard (BT keyboard + touchpad) types
+     * like a keyboard: Shift and letters queue, W latches nothing, BTN_LEFT
+     * stays a mouse button.  A plain mouse node's keys never enter the queue. */
+    memset(&st, 0, sizeof(st)); fresh(&gm, &fd);
+    gm.keyboard_count = 0; gm.keyboard_fds[0] = -1;
+    gm.mouse_fds[0] = fd; gm.mouse_count = 1; gm.mouse_keys[0] = true;
+    gm.mouse_slot[0] = 0;
+    gamepad_text_entry(&gm, true);
+    key(fd, KEY_LEFTSHIFT, 1); key(fd, KEY_H, 1); key(fd, KEY_LEFTSHIFT, 0);
+    key(fd, KEY_SPACE, 1); key(fd, KEY_UP, 1); key(fd, BTN_LEFT, 1);
+    poll_with(&gm, &st, fd, 0);
+    n = gamepad_take_keys(&gm, k, GAMEPAD_KEYQ_MAX);
+    CHECK(n == 2);
+    CHECK(n >= 1 && k[0].code == KEY_H && k[0].shift);
+    CHECK(n >= 2 && k[1].code == KEY_SPACE);
+    CHECK(!st.buttons[BTN_ID_JUMP].held);
+    CHECK(st.buttons[BTN_ID_UP].held);              /* arrow still moves focus */
+    CHECK(st.mouse_left_held);
+    gamepad_close(&gm);
+
+    memset(&st, 0, sizeof(st)); fresh(&gm, &fd);
+    gm.keyboard_count = 0; gm.keyboard_fds[0] = -1;
+    gm.mouse_fds[0] = fd; gm.mouse_count = 1; gm.mouse_keys[0] = false;
+    gm.mouse_slot[0] = 0;
+    gamepad_text_entry(&gm, true);
+    key(fd, KEY_H, 1); key(fd, KEY_SPACE, 1);
+    poll_with(&gm, &st, fd, 0);
+    CHECK(gamepad_take_keys(&gm, k, GAMEPAD_KEYQ_MAX) == 0);
+    gamepad_close(&gm);
+
     printf("gamepad_text_test: %d checks, %d failed\n", checks, fails);
     return fails ? 1 : 0;
 }

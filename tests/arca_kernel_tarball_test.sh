@@ -15,9 +15,9 @@
 #      ambiguous pin, a malformed pin, a missing file and a missing argument each fail
 #   B  the real pin file carries the linux-4.14.52.tar.xz line, and the real tarball verifies
 #      against it when it is present (skipped, and said so, when it is absent)
-#   C  neither call site contains a 64-hex literal: the pin is read, never copied
-#   D  each call site sources the library and calls arca_check_kernel_tarball within the six
-#      lines above every `tar xf`; build-kernel-modules.sh also calls it after its wget
+#   C  the call site contains a 64-hex literal: the pin is read, never copied
+#   D  the call site sources the library and calls arca_check_kernel_tarball within the six
+#      lines above every `tar xf`
 #
 # CAN NOT SEE: whether the real tarball's digest is the pin's, unless it is present on disk, and
 # whether the scripts behave when run: they are read as text, never executed.
@@ -31,7 +31,6 @@ LIB="${LIB:-$REPO_DIR/lib/arca-kernel-src.sh}"
 REAL_PIN="$REPO_DIR/rootfs/package-hashes/linux-headers.hash"
 REAL_TARBALL="$REPO_DIR/usb_host/linux-4.14.52.tar.xz"
 BUILD_IMAGE="$REPO_DIR/kernel/build-image.sh"
-BUILD_MODULES="$REPO_DIR/usb_host/build-kernel-modules.sh"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 PASS=0
@@ -107,16 +106,13 @@ else
     skip "B2 usb_host/linux-4.14.52.tar.xz is absent; not verified here"
 fi
 
-echo "== C  no 64-hex literal in the call sites"
 # The pattern must match a 64-hex string, or the absence below proves nothing.
 if printf 'x %s y\n' "$FIX_HEX" | grep -Eq '[0-9a-f]{64}'; then
-    for f in "$BUILD_IMAGE" "$BUILD_MODULES"; do
-        if grep -Eq '[0-9a-f]{64}' "$f"; then
-            bad "C $(basename "$f") contains a 64-hex literal (the pin was copied in)"
-        else
-            ok "C $(basename "$f") contains no 64-hex literal"
-        fi
-    done
+    if grep -Eq '[0-9a-f]{64}' "$BUILD_IMAGE"; then
+        bad "C $(basename "$BUILD_IMAGE") contains a 64-hex literal (the pin was copied in)"
+    else
+        ok "C $(basename "$BUILD_IMAGE") contains no 64-hex literal"
+    fi
 else
     bad "C the 64-hex pattern does not match a 64-hex string (the check is blind)"
 fi
@@ -144,7 +140,6 @@ call_site_ok() {
 
 echo "== D  the call sites"
 expect_rc "D1 kernel/build-image.sh sources the library and checks before tar xf" 0 call_site_ok "$BUILD_IMAGE" 0
-expect_rc "D2 usb_host/build-kernel-modules.sh checks before tar xf and after wget" 0 call_site_ok "$BUILD_MODULES" 1
 # Negative control: a call placed AFTER the tar xf must be refused by the same test.
 mkdir -p "$TMP/sab"
 cat > "$TMP/sab/late.sh" <<'LATE'

@@ -1012,6 +1012,16 @@ int gamepad_take_keys(GamepadManager *gm, GamepadKeyEv *out, int cap) {
     return n;
 }
 
+/* One keyboard EV_KEY, from a keyboard node or from a mouse node that carries a
+ * keyboard: the typed-key queue and the latch.  In text entry a W/A/S/D/Space
+ * press is a character, not a button; its release still goes through, so a key
+ * held across the switch does not stay latched. */
+static void keyboard_key_event(GamepadManager *gm, bool *latched, int code, int value) {
+    note_typed_key(gm, code, value);
+    if (!(gm->text_entry && value != 0 && text_shadowed_key(code)))
+        latch_key(latched, code, value != 0);
+}
+
 /* True: SYN_DROPPED, the latches may be stale (see poll_gamepad). */
 static bool poll_keyboard_fd(GamepadManager *gm, int *fd, bool *latched) {
     struct input_event ev;
@@ -1022,12 +1032,7 @@ static bool poll_keyboard_fd(GamepadManager *gm, int *fd, bool *latched) {
         if (ev.type == EV_KEY) {
             if (ev.value == 1 && hw_blank_note_activity()) continue;
             hw_blank_keepalive();
-            note_typed_key(gm, ev.code, ev.value);
-            /* In text entry a W/A/S/D/Space press is a character, not a button;
-             * its release still goes through, so a key held across the switch
-             * does not stay latched. */
-            if (!(gm->text_entry && ev.value != 0 && text_shadowed_key(ev.code)))
-                latch_key(latched, ev.code, ev.value != 0);
+            keyboard_key_event(gm, latched, ev.code, ev.value);
         }
     }
     if (read_gone(r)) {
@@ -1096,9 +1101,13 @@ static bool poll_mouse(GamepadManager *gm, InputState *state) {
                     btn[1] = down;
                 else if (ev.code == BTN_MIDDLE)
                     btn[2] = down;
-                else
-                    latch_key(gm->held_latched[bucket_of(gm->mouse_slot[k])],
-                              ev.code, down);   /* a keyboard+touchpad combo node */
+                else {
+                    bool *lat = gm->held_latched[bucket_of(gm->mouse_slot[k])];
+                    if (gm->mouse_keys[k])   /* a keyboard+touchpad combo node */
+                        keyboard_key_event(gm, lat, ev.code, ev.value);
+                    else
+                        latch_key(lat, ev.code, down);   /* its partner node's keys */
+                }
             }
             /* SYN_REPORT ignored — we batch all events in the read loop */
         }

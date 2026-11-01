@@ -231,6 +231,7 @@ CTEST_ROWS=(
     "usb_watch_test|-I.|common/usb_watch.c"
     "usb_bus_test|-I.|control_panel/usb_bus.c"
     "log_filter_test|-I.|control_panel/log_filter.c"
+    "log_follow_test|-I.|control_panel/log_filter.c"
     "log_sources_test|-I.|control_panel/log_sources.c"
     "term_keymap_test|-I common|"
     "term_args_test|-I common|"

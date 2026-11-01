@@ -106,7 +106,7 @@ DEVICE="root@$DEVICE_IP"
 # native_apps' GAMES_BINARIES follows. Modes are DECLARED, never read off disk:
 # /mnt/c reports every file 0777 and discards chmod (../CLAUDE.md).
 #
-# USB_MODULES is the list build-kernel-modules.sh produces, and it drives three things:
+# USB_MODULES is the list kernel/build-bt-modules.sh --set usb produces, and it drives three things:
 # the "already built" short-circuit, the post-build presence check, and the artifact
 # rows below. A module added to the build script is added HERE and nowhere else.
 USB_MODULES=(
@@ -123,7 +123,7 @@ done
 unset _mod
 
 # The USB mass-storage module is built against OUR kernel image by ../kernel/build-bt-modules.sh
-# --set storage (the other seven come from build-kernel-modules.sh), into modules-storage/ with
+# --set storage (the other seven are its --set usb), into modules-storage/ with
 # its load-order.txt, and goes to /lib/modules/4.14.52/storage. Order matters only to the init
 # script, which reads the load-order.txt that travels with them.
 STORAGE_DIR="$SCRIPT_DIR/modules-storage"
@@ -187,37 +187,34 @@ fi
 echo ""
 
 # ── 2. the seven kernel modules ─────────────────────────────────────────────
-ts "[2/7] kernel modules (Xbox controller + USB audio)"
+#
+# Built against OUR kernel image (kernel/build-bt-modules.sh --set usb), so they carry the
+# image's symbol CRCs and load without "no symbol version for module_layout". Rebuilt when the
+# builder is newer than the result, as the storage step below is.
+ts "[2/7] kernel modules (Xbox controller + USB audio, kernel/build-bt-modules.sh --set usb)"
 _all_built=1
-for _mod in "${USB_MODULES[@]}"; do
+for _mod in "${USB_MODULES[@]}" load-order.txt; do
     [[ -f "$MODULES_DIR/$_mod" ]] || _all_built=0
 done
+if [[ -n "$(find "$REPO_ROOT/kernel/build-bt-modules.sh" -newer "$MODULES_DIR/load-order.txt" -print -quit 2>/dev/null)" ]]; then
+    _all_built=0
+fi
 if [[ $_all_built -eq 1 ]]; then
     ok "already built in modules/"
 else
-    command -v bc >/dev/null 2>&1 || err "'bc' not found. Install every host prerequisite with setup-build-env.sh, at the repo root."
-
-    # The kernel config comes off a device. ⚠️ With --bundle there is no device to
-    # ask, so this is a refusal with the one command that fixes it rather than a
-    # confusing failure inside build-kernel-modules.sh.
-    if [[ ! -f "$SCRIPT_DIR/device_config" ]]; then
-        if [[ -z "$DEVICE_IP" ]]; then
-            err "the modules are not built and usb_host/device_config is absent, so
-     build-kernel-modules.sh has no kernel config to build against. The file is
-     tracked in git; restore it with:  git checkout -- usb_host/device_config
-     (or, with a unit at hand: ssh root@<ip> cat /proc/config.gz | gunzip > usb_host/device_config).
-     modules/ is a gitignored cross-compilation artifact, not a source."
-        fi
-        info "fetching /proc/config.gz from the device..."
-        ssh "$DEVICE" "cat /proc/config.gz" > "$SCRIPT_DIR/device_config.gz"
-        gunzip -f "$SCRIPT_DIR/device_config.gz"
-        ok "saved usb_host/device_config"
-    fi
+    # The image the unit boots: ~/rw-kbuild-image, or the --work dir of another build-image.sh run
+    # named in ARCA_KBUILD_IMAGE (a test kernel). Modules must match the kernel they load on.
+    KIMG="${ARCA_KBUILD_IMAGE:-$HOME/rw-kbuild-image}"
+    [[ -f "$KIMG/linux-4.14.52/vmlinux" ]] \
+        || err "$KIMG is not built, and the USB modules are built against it.
+     Run kernel/build-image.sh first (in WSL), then re-run this."
+    REUSE=()
+    [[ -f "$HOME/rw-kbuild-usb/linux-4.14.52/Makefile" ]] && REUSE=(--reuse)
     info "building (several minutes on the first run)..."
-    bash "$SCRIPT_DIR/build-kernel-modules.sh"
+    bash "$REPO_ROOT/kernel/build-bt-modules.sh" --set usb --image "$KIMG" --out "$MODULES_DIR" "${REUSE[@]}"
 fi
 for mod in "${USB_MODULES[@]}"; do
-    [[ -f "$MODULES_DIR/$mod" ]] || err "module $mod not in $MODULES_DIR — run build-kernel-modules.sh by hand to debug"
+    [[ -f "$MODULES_DIR/$mod" ]] || err "module $mod not in $MODULES_DIR — run kernel/build-bt-modules.sh --set usb --out usb_host/modules by hand to debug"
 done
 ok "${USB_MODULES[*]}"
 echo ""

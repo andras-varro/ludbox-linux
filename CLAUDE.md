@@ -177,7 +177,7 @@ misparses. When in doubt, over-deploy — the failure mode is silent.
 | `common/audio_out.c`, `common/audio_gen.c` (+ `audio_out.h`, `audio_gen.h`) | `native_apps` + **ScummVM** — ⚠️ **two, not three: measured 2026-09-09**, `vnc_client/Makefile`'s `SRCS` names neither, and no `audio_out` symbol appears anywhere in that tree. They are on ScummVM's `OBJS` via `configure.patch`, which is why the row above cannot speak for them |
 | anything in `device-files/` (`arca-app`, the rules files, …) | neither — **only** `./provision.sh <ip>`, which ends in a reboot (or a new `make-card-image.sh` image, offline) |
 | the six **`usb`-group** device files (`usb-host`, `enable-usb-host.sh`, `xpad-modules`, `usb-audio-modules`, `usb-storage-modules`, `arca-storage`) | either of the above, **or** `cd usb_host && ./build-and-deploy.sh <ip>` — it compiles the `usb` group itself and, unlike them, needs no reboot. Same for the **`bluetooth`** group (`bluetooth`, `bluetooth.conf`, `bluetooth-main.conf`, `bluetooth-input.conf`) with `cd bluetooth && ./build-and-deploy.sh <ip>`, and the **`backup`** group (`arca-backup`, `backup.d/*.item`) with `cd native_apps && ./build-and-deploy.sh <ip>` |
-| `usb_host/devmem_write.c`, `build-kernel-modules.sh` | `cd usb_host && ./build-and-deploy.sh <ip>` |
+| `usb_host/devmem_write.c`; the `usb` set of `kernel/build-bt-modules.sh` | `cd usb_host && ./build-and-deploy.sh <ip>` (it builds the seven modules itself) |
 
 ## Working from this host — Windows, WSL and the tools
 

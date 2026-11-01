@@ -64,3 +64,17 @@ int log_clamp_top(int top, int n, int rows) {
     if (top < 0) top = 0;
     return top;
 }
+
+LogFollowAction log_follow_step(bool *follow, LogFollowEvent ev) {
+    switch (ev) {
+    case LF_EV_TOGGLE:
+        *follow = !*follow;
+        return *follow ? LF_ACT_JUMP_END : LF_ACT_NONE;
+    case LF_EV_SCROLLED_UP:
+        *follow = false;
+        return LF_ACT_NONE;
+    case LF_EV_CHANGED:
+        return *follow ? LF_ACT_RELOAD_END : LF_ACT_NONE;
+    }
+    return LF_ACT_NONE;
+}
