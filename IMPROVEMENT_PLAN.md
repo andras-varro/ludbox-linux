@@ -199,17 +199,6 @@ touch-down until all fingers are up. **Steps:** done 2026-11-01, not yet at the 
 one game converted and checked at the panel; then the rest. **Done when** one game runs with no on-screen buttons and the
 gesture opens its menu at the panel.
 
-### F157. Physical keyboard and mouse input in the on-screen keyboard — open, operator request 2026-10-22
-
-`keyboard_enter` (`common/keyboard.c`) accepts typed letters from a physical keyboard (`kb_apply_key`, `gamepad_text_entry` /
-`gamepad_take_keys`). **Panel result, 2026-10-22:** on the operator's Bluetooth keyboard with an integrated touchpad, the arrows
-moved the focus but letters were not typed. **Cause, read from source:** a combo node is opened as a mouse (`mouse_is_keyboard`),
-and the mouse read loop only latched its keys, never queueing them; `keyboard_key_event` (`common/gamepad.c`) is now the one
-per-key path for keyboard nodes and combo mouse nodes alike, host-tested in `native_apps/tests/gamepad_text_test.c`; **panel 2026-11-01:** the
-combo keyboard and a wired USB keyboard both type (Ludfin search box). No pointer was drawn over the on-screen keyboard with any mouse (operator, panel), because `common/keyboard.c` never called `pointer.c`; `kb_run` now updates and paints a pointer, a click going through the touch hit-test (`kb_mouse_frame`, host-tested in `keyboard_typed_test`), and `pointer.o` is linked by every app; built 2026-11-01, not yet at the panel.
-**Done when** a mouse pointer shows over the on-screen keyboard and a click presses an
-on-screen key, at the panel.
-
 ### F160. Does BT/USB audio need the speaker's `>>1` ceiling? — open, operator decision 2026-10-24
 
 `AUDIO_MASTER_SHIFT` (`common/audio_gen.h`, set in `common/audio.c`) halves every output: it is the internal speaker's ceiling,
