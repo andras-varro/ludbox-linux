@@ -180,6 +180,10 @@ is over temperature (the monitor service lights it until it cools). The Control 
 **LED** page can switch the LEDs off or change their brightness, and some games blink the
 LEDs for feedback.
 
+A **red square, flashing red screen edges and LED** mean the USB port is overloaded (devices
+drop and reconnect every few seconds): unplug some or use a powered hub; it clears by itself
+30 s after the overload stops. If USB stays dead, unplug the unit's power (a reboot is not enough).
+
 ## Licence and source
 
 The project's own code is **MIT**. The image also carries GPL, LGPL and other open-source

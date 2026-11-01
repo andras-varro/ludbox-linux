@@ -83,18 +83,11 @@ Cause not investigated;
 nesting subclass. **Next:** read the upstream change to
 `l2cap_sock_new_connection_cb`; decide between backporting the annotation and dropping lockdep from the image.
 
-### B57. Does MADC ADCIN6 follow what is plugged into the USB port? — open, n=1, needs a joint session (operator replugs while ch6 is read)
-
-`in_voltage6` read 26-29 mV on `.188` while an Xbox 360 pad was on the USB port and a steady 344-364 mV after the BT dongle replaced it
-([`SYSTEM_ANALYSIS.md#311-adc-and-temperature-twl4030-madc`](SYSTEM_ANALYSIS.md#311-adc-and-temperature-twl4030-madc)); the two states
-differ in more than the device, so the link is unproven. It needs a joint session (operator confirmed 2026-10-07): the operator replugs while ch6 is read. **Done when** an operator swaps pad and dongle back and forth on the port
-(reading `in_voltage6_input` after each swap, and once with the port empty) and the table says which condition, if any, moves it.
-
 ### B68. The syslog shows red lines at every boot — open, operator-observed 2026-10-12
 
 Boot-console errors are defects here. Every line the current image logs (`grep -E '\.(err|warn) ' /var/log/messages` on `.188`, 2026-10-15) is fixed in the tree or recorded as benign in [SYSTEM_ANALYSIS.md](SYSTEM_ANALYSIS.md#7-kernel-policy), except the ones below. **Not yet in an image:** the two `rw20.dts` warnings are fixed but booted only on `.188` as `uImage-b68` (`kernel/README.md`); the rc0/rc6 K links come with the next rootfs build (made by hand on `.188`). **Open:**
 
-1. `twl4030_madc: supply vusb3v1 not found, using dummy regulator`. The fix at cause is `&twl_madc { vusb3v1-supply = <&vusb3v1>; };`, but MADC would then hold the LDO the USB PHY driver also switches on permanently, and ADCIN3..6 readings may change (B57) [inferred from `twl4030-madc.c:889`]. **Operator 2026-10-31:** nice-to-have, after B57.
+1. `twl4030_madc: supply vusb3v1 not found, using dummy regulator`. The fix at cause is `&twl_madc { vusb3v1-supply = <&vusb3v1>; };`, but MADC would then hold the LDO the USB PHY driver also switches on permanently, and ADCIN3..6 readings may change [inferred from `twl4030-madc.c:889`]; re-read ch6 per the MADC table after the change. **Operator 2026-10-31:** nice-to-have.
 2. `snd_hwdep: no symbol version for module_layout` (printed once, for the first such module loaded): `usb_host/build-kernel-modules.sh` builds its seven `.ko` on `modules_prepare` from `usb_host/device_config` alone, with no vmlinux or `Module.symvers` and without `kernel/config-changes` or `kernel/patches`, so they carry no symbol CRCs and load unchecked against the running image. Measured 2026-10-31: `grep -a module_layout` finds it in none of `usb_host/modules/*.ko` and in all of `bluetooth/modules/*.ko`, which `kernel/build-bt-modules.sh` builds against the image tree. **Fix:** build the `usb_host` modules the way `kernel/build-bt-modules.sh` does; **done when** each carries `module_layout` and loads with no warning.
 3. avahi `No NSS support for mDNS detected`: `BR2_PACKAGE_NSS_MDNS=y` is in `rootfs/configs/arca_defconfig` (built 2026-10-31: `hosts: files mdns4_minimal [NOTFOUND=return] dns mdns4`); left: boot an image with it and check the line is gone.
 
@@ -103,27 +96,6 @@ Boot-console errors are defects here. Every line the current image logs (`grep -
 ### B69. Does the SD slot's card-detect switch work, and is it on the pad the DT names? — open, unverified
 
 `kernel/dts/rw20.dts:550` has `cd-gpios = <&gpio4 31 GPIO_ACTIVE_LOW>` (gpio_127, the vendor's value, kept) while the pad it muxes as a GPIO (`rw20.dts:278`) is `sdmmc1_dat4` = gpio_126. **[unverified]** Whether the switch is read at all has not been checked; the card boots, so nothing observed depends on it. **Done when** a card insert and removal is observed in the kernel log, or the property is shown to be inert.
-
-### B75. A USB overload drop: recovery and indicator built, the real-drop and BT-pad checks are left — open
-
-**Built (measured 2026-10-31 on `.115` with a simulated drop: the hub's `authorized` set to 0 and a `VBUS_ERROR` line written
-to `/dev/kmsg`):** `arcamond` reads new `/dev/kmsg` records; a `VBUS_ERROR` line arms a check at 5 s, and if no non-hub
-device is then enumerated it latches `MON_FLAG_USBFAULT` and runs `/etc/init.d/usb-host recover` at 5, 15 and 45 s, then
-every 120 s with no end, clearing at the first non-hub device (decision: `native_apps/common/usbfault.h`). While latched,
-`framebuffer.c` paints a 16×16 red square top-left and 6 px red sidebars, three 200 ms flashes every 10 s. The hub came back
-at ~9 s and the indicator cleared. The `$MUSB/mode` file is no detector: it reads `a_idle` with the hub, a USB audio card and
-the BT dongle all working. `device-files/bluetooth` `watch()` now sees each new `hci0` (it used `stat`, which BusyBox here
-lacks, so it never fired) and retries bonded devices at 5, 15, 45 s and three 120 s rounds, starting over on a newer instance.
-**Not measured:** a real overcurrent drop; a BT pad actually reconnecting after one; the indicator at 16 bpp (ScummVM, VNC)
-and in the retro cores; the sidebars flash only when the app presents (the launcher ~1 Hz).
-**Defaults chosen with the operator away, to overrule:** no letter in the square; 6 px bars, 3 × 200 ms per 10 s; retries
-never stop and the indicator stays; a recover does not wait for the launcher (the hub is already gone); no Control Panel
-"powered hub" line; the BT window ~7 min.
-**Done when** on `.115`, after a real drop, the hub returns without a replug, square and bars show during the fault and
-vanish after, and a previously connected BT pad reconnects without a power cycle.
-**Operator test 2026-10-31 (`.115`, a real overload):** recover brought the port back at once and the load
-tripped it again in a loop; a BT pad reconnected ~20 s after the load was pulled. **Built since:** 3 errors in
-30 s → `usb-host off` + 120 s retries, red LED flashing while latched (simulated on `.115`, not yet a real overload).
 
 ### B76. A plain `reboot` can hang in the shutdown scripts, and `provision.sh` reboots that way — open, seen once on `.115`
 
