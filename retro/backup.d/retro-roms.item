@@ -1,0 +1,6 @@
+name=Retro games (large)
+paths=home/root/data/retro/roms
+unit=no
+secret=no
+reboot=no
+default=no

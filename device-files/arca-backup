@@ -9,7 +9,7 @@
 #   arca-backup import <archive> <id>...     restore the selected items from an archive
 #
 # Stdout is a contract that callers parse, one line per fact:
-#   item <id> unit=<yes|no> secret=<yes|no> reboot=<yes|no> <name...>
+#   item <id> unit=<yes|no> secret=<yes|no> reboot=<yes|no> [default=no] <name...>   (default=no only for such items)
 #   exported <full path>
 #   archive <filename>
 #   info host=<h> version=<v> date=<d>
@@ -83,7 +83,11 @@ yesno() {
 item_line() {
   f="$ITEMDIR/$1.item"
   n=$(getkey "$f" name)
-  echo "item $1 unit=$(yesno "$(getkey "$f" unit)") secret=$(yesno "$(getkey "$f" secret)") reboot=$(yesno "$(getkey "$f" reboot)") ${n:-$1}"
+  # default=no (an item that starts unmarked in the export view) is printed only when set, so a
+  # caller that predates the key reads every other line unchanged.
+  d=
+  [ "$(getkey "$f" default)" = no ] && d="default=no "
+  echo "item $1 unit=$(yesno "$(getkey "$f" unit)") secret=$(yesno "$(getkey "$f" secret)") reboot=$(yesno "$(getkey "$f" reboot)") ${d}${n:-$1}"
 }
 
 cmd_items() {
@@ -106,6 +110,22 @@ host_name() {
 
 os_version() {
   sed -n 's/^VERSION_ID=//p' "$ROOT/etc/os-release" 2> /dev/null | head -n 1 | tr -d "\"'"
+}
+
+# prune_covered: stdin names to stdout, minus any name lying under another name in the list. tar
+# extracts or archives a directory with everything below it, and a name listed again below it
+# is archived twice (export) or reported "Not found in archive" (import, GNU tar). This is what
+# lets two items overlap, e.g. a games directory and the option files inside it.
+prune_covered() {
+  awk '
+    { line[NR] = $0; k = $0; sub(/^\.\//, "", k); sub(/\/$/, "", k); key[NR] = k; dir[k] = 1 }
+    END {
+      for (i = 1; i <= NR; i++) {
+        n = split(key[i], c, "/"); pre = ""; keep = 1
+        for (j = 1; j < n; j++) { pre = pre (j > 1 ? "/" : "") c[j]; if (pre in dir) { keep = 0; break } }
+        if (keep) print line[i]
+      }
+    }'
 }
 
 cmd_export() {
@@ -139,7 +159,7 @@ cmd_export() {
   echo "$INFO" >> "$TMP/list"
   mkdir -p "$dir" || die "cannot create $dir"
   out="$dir/ludbox-backup-$host-$stamp.tar.gz"
-  sort -u "$TMP/list" > "$TMP/list.u"
+  sort -u "$TMP/list" | prune_covered > "$TMP/list.u"
   { tar -cf "$TMP/out.tar" -C "${ROOT:-/}" -T "$TMP/list.u" && gzip -c "$TMP/out.tar" > "$out"; } || {
     rm -f "$out"
     die "tar failed"
@@ -273,7 +293,8 @@ cmd_import() {
       done
     done < "$TMP/members"
     if [ -s "$TMP/sel" ]; then
-      tar -xf "$TMP/a.tar" -C "${ROOT:-/}" -T "$TMP/sel" || die "tar failed on $id"
+      prune_covered < "$TMP/sel" > "$TMP/sel.p"
+      tar -xf "$TMP/a.tar" -C "${ROOT:-/}" -T "$TMP/sel.p" || die "tar failed on $id"
     fi
     [ "$(getkey "$ITEMDIR/$id.item" reboot)" = yes ] && reboot=yes
     echo "imported $id"

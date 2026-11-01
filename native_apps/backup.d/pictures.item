@@ -1,0 +1,6 @@
+name=Pictures library
+paths=home/root/data/pictures
+unit=no
+secret=no
+reboot=no
+default=no

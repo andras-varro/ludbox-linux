@@ -1,0 +1,5 @@
+name=Retro save states
+paths=home/root/data/retro/states
+unit=no
+secret=no
+reboot=no

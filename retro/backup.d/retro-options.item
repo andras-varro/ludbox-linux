@@ -1,0 +1,5 @@
+name=Retro options (core, per game, video)
+paths=home/root/data/retro/options home/root/data/retro/roms/*/*.opt home/root/data/retro/retro.cfg
+unit=no
+secret=no
+reboot=no

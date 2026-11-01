@@ -62,6 +62,15 @@ bool bk_parse_item(const char *line, BkItem *out) {
     if (!word(&p, it.id, sizeof it.id) || !bk_name_ok(it.id)) return false;
     if (!flag(&p, "unit", &it.unit) || !flag(&p, "secret", &it.secret) ||
         !flag(&p, "reboot", &it.reboot)) return false;
+    /* default=no is optional (the engine prints it only for such items), so a
+     * name that begins with some other word is not mistaken for it. */
+    const char *q = p;
+    char w[24];
+    if (word(&q, w, sizeof w) && !strncmp(w, "default=", 8)) {
+        bool on;
+        if (!flag(&p, "default", &on)) return false;
+        it.off_by_default = !on;
+    }
     while (*p == ' ') p++;
     strncpy(it.name, p, sizeof it.name - 1);
     trim_eol(it.name);
@@ -128,8 +137,9 @@ bool bk_last_error(const char *out, char *msg, size_t n) {
     return true;
 }
 
-bool bk_start_marked(const BkItem *it, bool foreign) {
+bool bk_start_marked(const BkItem *it, bool foreign, bool exporting) {
     if (it->secret) return false;
     if (it->unit && foreign) return false;
+    if (it->off_by_default && exporting) return false;
     return true;
 }

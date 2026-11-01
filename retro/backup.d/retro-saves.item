@@ -1,0 +1,5 @@
+name=Retro game saves
+paths=home/root/data/retro/saves
+unit=no
+secret=no
+reboot=no

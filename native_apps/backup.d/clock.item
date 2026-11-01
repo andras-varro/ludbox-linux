@@ -1,0 +1,5 @@
+name=Clock settings (alarm, dimming, 12/24 h)
+paths=home/root/data/clock.conf
+unit=no
+secret=no
+reboot=no

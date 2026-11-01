@@ -7,7 +7,7 @@
 #
 # ⚠️ An image and a release carry every core EXCEPT the ones in IMAGE_EXCLUDE (below), which
 # stay deployable from source over SSH. This script writes only
-# /home/root/data/retro/{cores,systems,system} on the unit. It never writes content/ or roms/,
+# /home/root/data/retro/{cores,systems,system} and the backup items in /opt/arca/backup.d on the unit. It never writes content/ or roms/,
 # and it deletes nothing except symlinks in cores/.
 #
 # Usage:
@@ -81,7 +81,7 @@ Usage: retro/build-and-deploy.sh <ip> [--no-build] [--no-pgo] [core ...]
 Enterprise (ep128emu-core), Spectrum (fuse) and C64 (vice) embed ROMs without a
 redistribution grant: --bundle leaves them out (IMAGE_EXCLUDE in this script); the
 deploy to a unit below always includes them. Writes only /home/root/data/retro/cores,
-/home/root/data/retro/systems and /home/root/data/retro/system on the unit; never
+/home/root/data/retro/systems and /home/root/data/retro/system on the unit, plus the retro-*.item backup items in /opt/arca/backup.d; never
 content/ or roms/.
 
 Run it in WSL: wsl.exe -e bash -lc "cd /mnt/c/work/roomwizard && retro/build-and-deploy.sh <ip>"
@@ -183,6 +183,10 @@ if [ -n "$BUNDLE_DIR" ]; then
                 || die "staging failed: system/$rel"
         done < <(find "$SCRIPT_DIR/system" -type f -print0 | sort -z)
     fi
+    for f in "$SCRIPT_DIR"/backup.d/*.item; do
+        arca_bundle_add "$BUNDLE_DIR" retro 644 "$f" "/opt/arca/backup.d/$(basename "$f")" \
+            || die "staging failed: $f"
+    done
     ts "Staged $(arca_bundle_finish "$BUNDLE_DIR" retro) file(s): ${#staged_so[@]} core(s), $n_sys system file(s)"
     exit 0
 fi
@@ -230,6 +234,10 @@ if [ "${#CFGS[@]}" -gt 0 ]; then
         scp -q "$f" "$DEVICE:$REMOTE_DIR/system/$rel" || die "scp of $rel failed"
     done
 fi
+# The backup items: data files in this tree, the same ones --bundle stages.
+ssh "$DEVICE" "mkdir -p /opt/arca/backup.d" || die "could not create /opt/arca/backup.d on $DEVICE"
+scp -q "$SCRIPT_DIR"/backup.d/*.item "$DEVICE:/opt/arca/backup.d/" || die "scp of backup items failed"
+ssh "$DEVICE" "chmod 644 /opt/arca/backup.d/retro-*.item" || die "chmod of backup items failed"
 
 # ── 5. verify: md5 on the unit against the host ─────────────────────────────
 want=$(cd "$OUT" && md5sum -- *_libretro.so | sort -k2)

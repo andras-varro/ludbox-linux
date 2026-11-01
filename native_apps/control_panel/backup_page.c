@@ -5,7 +5,8 @@
  * here: /usr/sbin/arca-backup reads the item files in /opt/arca/backup.d and
  * this page lists what `arca-backup items` prints as a marked list_view (the
  * first Control Panel user of common/list_view).  Secret items start unmarked.
- *
+ * first Control Panel user of common/list_view).  Secret items start unmarked, and so
+ * do default=no items (the pictures library) in the export view.
  *   HOME      the unit's items; EXPORT TO USB, IMPORT FROM USB
  *   ARCHIVES  the stick's archives, newest first; a tap opens one
  *   IMPORT    that archive's items (secret ones, and unit-bound ones from
@@ -138,7 +139,7 @@ static void list_reload(bool foreign) {
         int n;
         const BkItem *it = cur_items(&n);
         for (int i = 0; i < n; i++)
-            if (bk_start_marked(&it[i], foreign)) { lv_move_to(&lv, i); lv_key(&lv, LV_KEY_MARK); }
+            if (bk_start_marked(&it[i], foreign, view == V_HOME)) { lv_move_to(&lv, i); lv_key(&lv, LV_KEY_MARK); }
         lv_move_to(&lv, 0);
     }
 }

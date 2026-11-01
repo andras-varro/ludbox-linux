@@ -224,7 +224,7 @@ System setup is done once by `provision.sh` — no duplication across projects.
 **Each component's deploy script writes its own manifests and icons** — that is how projects plug into the launcher with no central registry.
 
 **Backup item.** `/opt/arca/backup.d/<id>.item` (`<id>` is `[a-z0-9_-]+`) says what part of the state one component owns: INI like the manifest, `name=` (shown in the UI), `paths=` (space separated, relative to `/`, no whitespace
-inside a path, globs allowed, a directory carries everything under it), and `unit=` / `secret=` / `reboot=` each `yes|no` (measured on or tied to this unit / holds a password or key / takes effect only after a reboot).
+inside a path, globs allowed, a directory carries everything under it), and `unit=` / `secret=` / `reboot=` each `yes|no` (measured on or tied to this unit / holds a password or key / takes effect only after a reboot), and optionally `default=no` (absent = yes): the item starts unmarked in the Control Panel export view, e.g. the pictures library, and is marked again when restored. Items may overlap (a games directory and the option files inside it): a path in two selected items is archived and restored once.
 The component's deploy script and `--bundle` copy its `backup.d/*.item`; `device-files/backup.d/` goes through `provision-rules.conf`. `/usr/sbin/arca-backup` (`device-files/arca-backup`) reads these files and nothing else, so a new app is backed up by shipping one.
 
 ## Projects

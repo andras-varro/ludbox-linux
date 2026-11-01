@@ -27,6 +27,10 @@ item() { printf 'name=%s\npaths=%s\nunit=%s\nsecret=%s\nreboot=%s\n' "$2" "$3" "
 item scores "High scores" "home/root/data/*.hig" no no no
 item hostname "Host name" "etc/hostname etc/hosts" yes no yes
 item ssh "SSH keys" "home/root/.ssh home/root/data/ssh" yes yes yes
+item pics "Pictures" "home/root/data/pictures" no no no
+printf 'default=no\n' >> "$R/opt/arca/backup.d/pics.item"
+item docs "Docs" "home/root/data/docs" no no no
+printf 'default=yes\n' >> "$R/opt/arca/backup.d/docs.item"
 echo myhost > "$R/etc/hostname"
 printf 'VERSION_ID=1.2\n' > "$R/etc/os-release"
 echo hosts > "$R/etc/hosts"
@@ -35,14 +39,33 @@ echo 200 > "$R/home/root/data/tetris.hig"
 echo nested > "$R/home/root/data/ssh/key"
 echo auth > "$R/home/root/.ssh/authorized_keys"
 echo unrelated > "$R/etc/unrelated"
+mkdir -p "$R/home/root/data/pictures"; echo jpg > "$R/home/root/data/pictures/a.jpg"
 
 run() { PATH="${SHIM:+$SHIM:}$PATH" ARCA_ROOT="$R" TMPDIR="$W/tmp" dash "$ENGINE" "$@" 2>&1; }
 
 echo "== items"
-check "items sorted, flags and names" "item hostname unit=yes secret=no reboot=yes Host name
+check "items sorted, flags and names" "item docs unit=no secret=no reboot=no Docs
+item hostname unit=yes secret=no reboot=yes Host name
+item pics unit=no secret=no reboot=no default=no Pictures
 item scores unit=no secret=no reboot=no High scores
 item ssh unit=yes secret=yes reboot=yes SSH keys" "$(run items)"
-
+OUTP=$(run export "$W/stick/ludbox-backup" pics)
+ARCP=${OUTP#exported }
+check "default=no item exports like any other" "home/root/data/pictures/a.jpg " "$(tar -tzf "$ARCP" 2> /dev/null | grep jpg | tr '\n' ' ')"
+check "contents keeps default=no on the item line" "item pics unit=no secret=no reboot=no default=no Pictures" "$(run contents "$ARCP" | grep '^item')"
+echo "== overlapping items"
+mkdir -p "$R/home/root/data/roms/nes"; echo rom > "$R/home/root/data/roms/nes/g.nes"; echo opt > "$R/home/root/data/roms/nes/g.nes.opt"
+item roms "Games" "home/root/data/roms" no no no
+item romopts "Game options" "home/root/data/roms/*/*.opt" no no no
+OUTO=$(run export "$W/stick/ludbox-backup" roms romopts)
+ARCO=${OUTO#exported }
+check "a path in two selected items is archived once" "1" "$(tar -tzf "$ARCO" 2> /dev/null | grep -c 'g\.nes\.opt$')"
+rm -f "$R/home/root/data/roms/nes/g.nes" "$R/home/root/data/roms/nes/g.nes.opt"
+check "importing both overlapping items restores the files" "imported roms
+imported romopts
+done reboot=no" "$(run import "$ARCO" roms romopts)"
+check "overlap import: rom and option both back" "rom opt" "$(cat "$R/home/root/data/roms/nes/g.nes") $(cat "$R/home/root/data/roms/nes/g.nes.opt")"
+rm -rf "$R/home/root/data/roms"
 echo "== export and contents"
 SNAP=$(cd "$R" && find . | sort)
 OUT=$(run export "$W/stick/ludbox-backup" scores hostname)

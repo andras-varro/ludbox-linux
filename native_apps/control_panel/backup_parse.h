@@ -3,7 +3,7 @@
  * drives it (tests/backup_parse_test.c).
  *
  * Contract (the engine's fixed stdout lines):
- *   item <id> unit=<yes|no> secret=<yes|no> reboot=<yes|no> <name with spaces>
+ *   item <id> unit=<yes|no> secret=<yes|no> reboot=<yes|no> [default=no] <name with spaces>
  *   archive <filename>          info host=<h> version=<v> date=<d>
  *   unknown <id>                imported <id>            done reboot=<yes|no>
  *   error <text>                (last line of a failed run)
@@ -25,6 +25,7 @@ typedef struct {
     bool unit;      /* measured on or tied to this unit */
     bool secret;
     bool reboot;    /* takes effect only after a reboot */
+    bool off_by_default;   /* default=no: not marked in the export view */
 } BkItem;
 
 /* An id or archive file name that may be put on an argv: non-empty, [A-Za-z0-9._-]
@@ -42,7 +43,8 @@ bool bk_parse_done(const char *line, bool *reboot);
 bool bk_last_error(const char *out, char *msg, size_t n);
 
 /* Does an item start marked?  Secrets never; a unit-bound item not when the
- * archive came from another unit (foreign). */
-bool bk_start_marked(const BkItem *it, bool foreign);
+ * archive came from another unit (foreign); a default=no item not in the export
+ * view (exporting), where the user opts in, but yes when restoring it. */
+bool bk_start_marked(const BkItem *it, bool foreign, bool exporting);
 
 #endif

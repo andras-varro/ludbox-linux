@@ -8,7 +8,8 @@
  * B  archive / info / unknown / imported / done lines;
  * C  an id or file name that could be an option or a path is refused;
  * D  the last "error" line of a failed run;
- * E  which items start marked (secret never, unit-bound only on the same unit).
+ * E  which items start marked (secret never, unit-bound only on the same unit,
+ *    default=no ones never in the export view but marked when restored).
  * It cannot see the page: drawing, focus and the engine itself.
  */
 #include "control_panel/backup_parse.h"
@@ -28,6 +29,12 @@ int main(void) {
     CHECK(bk_parse_item("item ssh-keys unit=yes secret=yes reboot=yes SSH keys", &it));
     CHECK(it.unit && it.secret && it.reboot && !strcmp(it.name, "SSH keys"));
     CHECK(bk_parse_item("item a unit=no secret=no reboot=no", &it) && !strcmp(it.name, "a"));
+    CHECK(bk_parse_item("item pics unit=no secret=no reboot=no default=no Pictures library", &it));
+    CHECK(it.off_by_default && !strcmp(it.name, "Pictures library"));
+    CHECK(bk_parse_item("item pics unit=no secret=no reboot=no default=yes Pictures library", &it));
+    CHECK(!it.off_by_default && !strcmp(it.name, "Pictures library"));
+    CHECK(bk_parse_item("item s unit=no secret=no reboot=no Game scores", &it) && !it.off_by_default);
+    CHECK(!bk_parse_item("item a unit=no secret=no reboot=no default=maybe x", &it));
     CHECK(!bk_parse_item("item a unit=maybe secret=no reboot=no x", &it));
     CHECK(!bk_parse_item("item a secret=no unit=no reboot=no x", &it));
     CHECK(!bk_parse_item("item a unit=no secret=no x", &it));
@@ -62,11 +69,14 @@ int main(void) {
     CHECK(!bk_last_error("exported x\n", e, sizeof e));
     CHECK(bk_last_error("error a very long reason that does not fit in the buffer at all", e, 10) && strlen(e) == 9);
     /* E */
-    BkItem plain = { "p", "P", false, false, false }, sec = { "s", "S", false, true, false },
-           unit = { "u", "U", true, false, false };
-    CHECK(bk_start_marked(&plain, false) && bk_start_marked(&plain, true));
-    CHECK(!bk_start_marked(&sec, false) && !bk_start_marked(&sec, true));
-    CHECK(bk_start_marked(&unit, false) && !bk_start_marked(&unit, true));
+    BkItem plain = { "p", "P", false, false, false, false }, sec = { "s", "S", false, true, false, false },
+           unit = { "u", "U", true, false, false, false }, lib = { "l", "L", false, false, false, true };
+    CHECK(bk_start_marked(&plain, false, true) && bk_start_marked(&plain, true, true));
+    CHECK(!bk_start_marked(&sec, false, true) && !bk_start_marked(&sec, true, false));
+    CHECK(bk_start_marked(&unit, false, true) && !bk_start_marked(&unit, true, true));
+    CHECK(!bk_start_marked(&lib, false, true) && !bk_start_marked(&lib, true, true));
+    CHECK(bk_start_marked(&lib, false, false));   /* restoring: it was exported on purpose */
+    CHECK(bk_start_marked(&lib, true, false));
 
     printf("backup_parse_test: %d checks, %d failed\n", checks, fails);
     return fails != 0;
