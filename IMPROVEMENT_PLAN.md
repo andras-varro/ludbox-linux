@@ -195,7 +195,7 @@ held 1 s opens the same menu**, the game paused while it is open, with a short h
 fingers in separate slots, each kept from touch-down to lift (operator, Input → MULTI-TOUCH, 2026-11-01), but
 games read the single emulated point the driver also sends (`kernel/drivers/cy8ctmg120_ts`): slot 0, or slot 1 when alone [read from the driver]. With two fingers down,
 that point jumps to the remaining finger at a lift, so the gesture must hide touch from the game from the second finger's
-touch-down until all fingers are up. **Steps:** done 2026-11-01, not yet at the panel: `touch_finger_count`, `touch_finger_box` and `touch_take_two_finger_hold` in `touch_input.c` (`touch_multi_test`); left: the gesture once in common code;
+touch-down until all fingers are up. **Steps:** done 2026-11-01, not yet at the panel: `touch_finger_count`, `touch_finger_box`, `touch_take_two_finger_hold` and the opt-in hiding `touch_set_hide_multi` in `touch_input.c` (`touch_multi_test`), and the start hint `two_finger_hint_draw` in `common.c`; opening the menu and pausing stay each game's own pause dialog. Left:
 one game converted and checked at the panel; then the rest. **Done when** one game runs with no on-screen buttons and the
 gesture opens its menu at the panel.
 

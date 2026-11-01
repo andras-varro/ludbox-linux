@@ -106,6 +106,9 @@ typedef struct {
     uint32_t mt_t0;                  // millisecond clock when the count reached 2
     bool mt_latch;                   // a two-finger hold happened, not yet taken
     uint32_t (*mt_clock)(void);      // NULL = CLOCK_MONOTONIC; tests inject
+    bool mt_hide;                    // touch_set_hide_multi() is on
+    bool mt_hiding;                  // a second finger came down; not all up yet
+    bool mt_shown_held;              // state.held as the caller last saw it
 } TouchInput;
 
 // Panel positions of the two interior knots, for a given panel extent. Fixed
@@ -250,5 +253,13 @@ bool touch_finger_box(TouchInput *touch, int *x0, int *y0, int *x1, int *y1);
 // below 2 to re-arm. Timed by touch_poll() calls, so the caller's loop must
 // keep polling; call this at a safe point each frame (cf. gamepad_take_keys).
 bool touch_take_two_finger_hold(TouchInput *touch);
+
+// The two-finger gesture's other half, for a game that opens its menu on the
+// hold. With two fingers down the single point jumps to the remaining finger
+// at a lift, so while this is on TouchState shows no touch from the moment a
+// second finger is down until every finger is up: one `released` if a finger
+// was showing, then nothing; the next touch-down is a fresh press. Off by
+// default, so an app that never asks keeps the plain single-point behaviour.
+void touch_set_hide_multi(TouchInput *touch, bool on);
 
 #endif

@@ -1,5 +1,5 @@
 /* Host regression for touch_input.c multi-touch: finger count, the two-finger
- * bounding box, and the latched >= 1 s two-finger hold.
+ * bounding box, the latched >= 1 s two-finger hold, and touch_set_hide_multi().
  *
  * touch_poll() reads struct input_event from touch->fd, so a non-blocking pipe
  * stands in for the evdev node and the test writes the exact frames
@@ -144,6 +144,71 @@ int main(void) {
     touch_poll(&t);
     CHECK(t.state.pressed && t.state.held);
     CHECK(t.state.x > 300 && t.state.x < 500);
+
+    /* J: hide mode off (the default): a second finger changes nothing shown */
+    slot(0, 1, 2048, 2048); sync_();
+    touch_poll(&t);                               /* finger 1 held from I */
+    slot(1, 1, 3000, 3000); sync_();
+    touch_poll(&t);
+    CHECK(touch_finger_count(&t) == 2);
+    CHECK(t.state.held && !t.state.released);
+    slot(0, 0, 0, 0); slot(1, 0, 0, 0); ev(EV_KEY, BTN_TOUCH, 0); sync_();
+    touch_poll(&t);
+    CHECK(t.state.released && !t.state.held);
+
+    /* K: hide mode: finger 1 shows, finger 2 gives one release, then nothing */
+    touch_set_hide_multi(&t, true);
+    slot(0, 1, 2048, 2048);
+    ev(EV_ABS, ABS_X, 2048); ev(EV_ABS, ABS_Y, 2048); ev(EV_KEY, BTN_TOUCH, 1); sync_();
+    touch_poll(&t);
+    CHECK(t.state.pressed && t.state.held);
+    slot(1, 1, 3000, 3000); sync_();
+    touch_poll(&t);
+    CHECK(t.state.released && !t.state.held && !t.state.pressed);
+    touch_poll(&t);
+    CHECK(!t.state.released && !t.state.held && !t.state.pressed);
+    /* one finger lifts: the legacy point jumps to the other, still hidden */
+    slot(0, 0, 0, 0); ev(EV_ABS, ABS_X, 3000); ev(EV_ABS, ABS_Y, 3000); sync_();
+    touch_poll(&t);
+    CHECK(touch_finger_count(&t) == 1);
+    CHECK(!t.state.released && !t.state.held && !t.state.pressed);
+    /* the last lift: no release shown (the release was given at finger 2) */
+    slot(1, 0, 0, 0); ev(EV_KEY, BTN_TOUCH, 0); sync_();
+    touch_poll(&t);
+    CHECK(!t.state.released && !t.state.held && !t.state.pressed);
+    /* all up: the next touch-down is a fresh press again */
+    slot(0, 1, 1000, 1000);
+    ev(EV_ABS, ABS_X, 1000); ev(EV_ABS, ABS_Y, 1000); ev(EV_KEY, BTN_TOUCH, 1); sync_();
+    touch_poll(&t);
+    CHECK(t.state.pressed && t.state.held);
+    slot(0, 0, 0, 0); ev(EV_KEY, BTN_TOUCH, 0); sync_();
+    touch_poll(&t);
+    CHECK(t.state.released && !t.state.held);
+
+    /* L: two fingers in one frame: no press is ever shown, the hold still latches */
+    now_ms = 50000;
+    slot(0, 1, 1000, 1000); slot(1, 1, 3000, 3000);
+    ev(EV_ABS, ABS_X, 1000); ev(EV_ABS, ABS_Y, 1000); ev(EV_KEY, BTN_TOUCH, 1); sync_();
+    touch_poll(&t);
+    CHECK(!t.state.pressed && !t.state.held && !t.state.released);
+    now_ms += TOUCH_HOLD2_MS;
+    touch_poll(&t);
+    CHECK(touch_take_two_finger_hold(&t));
+    CHECK(!t.state.held);
+    slot(0, 0, 0, 0); slot(1, 0, 0, 0); ev(EV_KEY, BTN_TOUCH, 0); sync_();
+    touch_poll(&t);
+    CHECK(!t.state.pressed && !t.state.held && !t.state.released);
+
+    /* M: switching it off mid-hide shows touch again from the next edge */
+    slot(0, 1, 1000, 1000); slot(1, 1, 3000, 3000); ev(EV_KEY, BTN_TOUCH, 1); sync_();
+    touch_poll(&t);
+    CHECK(!t.state.held);
+    touch_set_hide_multi(&t, false);
+    slot(0, 0, 0, 0); slot(1, 0, 0, 0); ev(EV_KEY, BTN_TOUCH, 0); sync_();
+    touch_poll(&t);
+    ev(EV_KEY, BTN_TOUCH, 1); sync_();
+    touch_poll(&t);
+    CHECK(t.state.pressed && t.state.held);
 
     printf("%d checks, %d failed\n", checks, fails);
     return fails ? 1 : 0;

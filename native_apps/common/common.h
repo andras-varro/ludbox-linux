@@ -199,6 +199,12 @@ int text_measure_height(int scale);
 void text_draw_centered(Framebuffer *fb, int center_x, int center_y,
                        const char *text, uint32_t color, int scale);
 
+// The two-finger gesture's hint, drawn over a game with no on-screen menu
+// button for its first TWO_FINGER_HINT_MS of play (pass the ms since play
+// began; it draws nothing after). Draw it last, before the swap.
+#define TWO_FINGER_HINT_MS 3000
+void two_finger_hint_draw(Framebuffer *fb, uint32_t shown_ms);
+
 // Uppercase src into dest and cut it with "..." to fit max_width pixels
 // (<= 0: no width limit) and dest_size bytes.  Always NUL-terminated within
 // dest_size; writes nothing when dest_size is 0.

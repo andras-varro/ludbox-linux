@@ -124,6 +124,16 @@ void text_draw_centered(Framebuffer *fb, int center_x, int center_y,
     fb_draw_text(fb, x, y, text, color, scale);
 }
 
+void two_finger_hint_draw(Framebuffer *fb, uint32_t shown_ms) {
+    static const char *hint = "HOLD TWO FINGERS FOR THE MENU";
+    if (shown_ms >= TWO_FINGER_HINT_MS) return;
+    int w = text_measure_width(hint, 2) + 32;
+    int h = text_measure_height(2) + 24;
+    int cy = SCREEN_SAFE_BOTTOM - h / 2 - 16;
+    fb_fill_rect_alpha(fb, fb->width / 2 - w / 2, cy - h / 2, w, h, COLOR_BLACK, 170);
+    text_draw_centered(fb, fb->width / 2, cy, hint, COLOR_WHITE, 2);
+}
+
 void text_truncate(char *dest, size_t dest_size, const char *src,
                    int max_width, int scale) {
     if (dest == NULL || dest_size == 0) return;

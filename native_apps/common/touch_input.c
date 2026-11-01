@@ -500,6 +500,29 @@ static void mt_clear(TouchInput *touch) {
     touch->mt_timing = false;
     touch->mt_fired = false;
     touch->mt_latch = false;
+    touch->mt_hiding = false;        // only ever called with no finger down
+    touch->mt_shown_held = false;
+}
+
+void touch_set_hide_multi(TouchInput *touch, bool on) {
+    touch->mt_hide = on;
+    if (!on) touch->mt_hiding = false;
+}
+
+// Mask what this poll publishes while the gesture hides touch. Runs after the
+// events, so the count is the frame's and a press that arrived together with
+// the second finger is never shown.
+static void mt_hide_update(TouchInput *touch) {
+    if (!touch->mt_hide) return;
+    if (touch_finger_count(touch) >= 2) touch->mt_hiding = true;
+    if (touch->mt_hiding) {
+        touch->state.released = touch->mt_shown_held;
+        touch->state.pressed = false;
+        touch->state.held = false;
+        if (touch_finger_count(touch) == 0 && !touch->touching)
+            touch->mt_hiding = false;
+    }
+    touch->mt_shown_held = touch->state.held;
 }
 
 int touch_poll(TouchInput *touch) {
@@ -570,6 +593,7 @@ int touch_poll(TouchInput *touch) {
         if (!touch->touching) mt_clear(touch);
     }
     mt_hold_update(touch, mt_now_ms(touch));
+    mt_hide_update(touch);
 
     return events_read;
 }
