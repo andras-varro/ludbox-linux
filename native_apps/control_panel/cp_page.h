@@ -154,6 +154,11 @@ typedef void (*CpConfirmFn)(Config *cfg);
 void cp_confirm(const char *title, const char *message, const char *ok_text,
                 CpConfirmFn on_ok);
 
+/* Tells the user something and waits for OK: the confirmation dialog's box with
+ * a single OK button (no CANCEL), same input rules.  message is word-wrapped at
+ * 33 characters and holds at most 127. */
+void cp_notice(const char *title, const char *message);
+
 /* The touch geometry tools, for a page's run_fullscreen().  CALIBRATE is the
  * full wizard (interior fit, reach, edges), EDGES its screen-edge steps alone,
  * DIAGNOSTIC hands the screen to /opt/games/touch_raw until it exits.  The

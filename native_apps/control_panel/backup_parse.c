@@ -143,3 +143,20 @@ bool bk_start_marked(const BkItem *it, bool foreign, bool exporting) {
     if (it->off_by_default && exporting) return false;
     return true;
 }
+
+bool bk_parse_note(const char *line, char *id, size_t idn, char *note, size_t nn) {
+    const char *p;
+    char i[BK_ID_MAX];
+    if (!nn || !keyword(line, "note", &p)) return false;
+    if (!word(&p, i, sizeof i) || !bk_name_ok(i) || strlen(i) >= idn) return false;
+    while (*p == ' ') p++;
+    char t[BK_NOTE_MAX];
+    strncpy(t, p, sizeof t - 1);
+    t[sizeof t - 1] = '\0';
+    trim_eol(t);
+    if (!t[0]) return false;
+    strcpy(id, i);
+    strncpy(note, t, nn - 1);
+    note[nn - 1] = '\0';
+    return true;
+}

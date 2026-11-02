@@ -1,0 +1,7 @@
+name=ScummVM games (large)
+paths=home/root/data/games
+unit=no
+secret=no
+reboot=no
+default=no
+note=Only games in /home/root/data/games are backed up. Move other games there and add them again in ScummVM.

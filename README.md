@@ -76,7 +76,7 @@ Games have no on-screen menu button: **hold two fingers on the screen for a seco
 **ScummVM games: you bring your own.** There is no on-screen way to add them yet, and
 USB thumb drives are not supported yet (on the roadmap). The only route today is a copy
 over SSH (section 5), for example `scp -r <game-folder> root@<ip>:/home/root/data/games/<game-folder>/`,
-then **Add Game** in ScummVM's own launcher. Copy with `scp` or an SFTP client
+then **Add Game** in ScummVM's own launcher; backup item **ScummVM games** copies only that folder. Copy with `scp` or an SFTP client
 (`sftp://root@<ip>/...`), not a file manager's `fish://` mode: fish writes byte by byte and
 the copy crawls with the CPU at 100%. Free, legal games (Beneath a Steel Sky, Flight of the
 Amazon Queen and others) are listed at <https://www.scummvm.org/games/>; prefer the floppy

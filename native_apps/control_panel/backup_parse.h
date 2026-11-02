@@ -4,6 +4,7 @@
  *
  * Contract (the engine's fixed stdout lines):
  *   item <id> unit=<yes|no> secret=<yes|no> reboot=<yes|no> [default=no] <name with spaces>
+ *   note <id> <text>            (after an item line that has note=)
  *   archive <filename>          info host=<h> version=<v> date=<d>
  *   unknown <id>                imported <id>            done reboot=<yes|no>
  *   error <text>                (last line of a failed run)
@@ -18,6 +19,7 @@
 #define BK_NAME_MAX  64
 #define BK_FILE_MAX  96
 #define BK_HOST_MAX  48
+#define BK_NOTE_MAX  160
 
 typedef struct {
     char id[BK_ID_MAX];
@@ -26,6 +28,7 @@ typedef struct {
     bool secret;
     bool reboot;    /* takes effect only after a reboot */
     bool off_by_default;   /* default=no: not marked in the export view */
+    char note[BK_NOTE_MAX];   /* optional text to show when the user marks it; "" = none */
 } BkItem;
 
 /* An id or archive file name that may be put on an argv: non-empty, [A-Za-z0-9._-]
@@ -33,6 +36,9 @@ typedef struct {
 bool bk_name_ok(const char *s);
 
 bool bk_parse_item(const char *line, BkItem *out);
+/* "note <id> <text>": the engine prints it after that item's item line.  The text is
+ * truncated to fit n (always terminated); false when the id is bad or the text empty. */
+bool bk_parse_note(const char *line, char *id, size_t idn, char *note, size_t nn);
 bool bk_parse_archive(const char *line, char *out, size_t n);
 bool bk_parse_info(const char *line, char *host, size_t hn, char *version, size_t vn,
                    char *date, size_t dn);

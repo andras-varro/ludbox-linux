@@ -170,7 +170,11 @@ static int run_engine(char *const argv[], char *why, size_t why_n) {
 }
 
 static void line_item_home(const char *l) {
+    char id[BK_ID_MAX], nt[BK_NOTE_MAX];
     if (n_home < MAX_ITEMS && bk_parse_item(l, &home_items[n_home])) n_home++;
+    else if (bk_parse_note(l, id, sizeof id, nt, sizeof nt))   /* the line after its item */
+        for (int i = 0; i < n_home; i++)
+            if (!strcmp(home_items[i].id, id)) snprintf(home_items[i].note, sizeof home_items[i].note, "%s", nt);
 }
 
 static void load_items(void) {
@@ -576,6 +580,10 @@ static CpPageResult row_tapped(int row) {
     lv_move_to(&lv, row);
     lv_key(&lv, LV_KEY_MARK);
     apply_view_buttons();
+    /* Export view only: ticking an item that carries a note tells the user what it means. A
+     * tap, Enter and the pad all arrive here; the automatic marks at list build do not. */
+    if (view == V_HOME && row < n_home && home_items[row].note[0] && lv_is_marked(&lv, row))
+        cp_notice("NOTE", home_items[row].note);
     return CP_PAGE_REDRAW;
 }
 

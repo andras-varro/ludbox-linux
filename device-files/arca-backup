@@ -10,6 +10,7 @@
 #
 # Stdout is a contract that callers parse, one line per fact:
 #   item <id> unit=<yes|no> secret=<yes|no> reboot=<yes|no> [default=no] <name...>   (default=no only for such items)
+#   note <id> <text>              (items only, right after that item's line, only for an item with note=<text>: shown to the user when they mark it)
 #   exported <full path>
 #   archive <filename>
 #   info host=<h> version=<v> date=<d>
@@ -101,6 +102,8 @@ cmd_items() {
     id=${id%.item}
     valid_id "$id" || continue
     item_line "$id"
+    nt=$(getkey "$ITEMDIR/$id.item" note)
+    if [ -n "$nt" ]; then echo "note $id $nt"; fi
   done
 }
 

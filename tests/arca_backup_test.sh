@@ -49,6 +49,12 @@ item hostname unit=yes secret=no reboot=yes Host name
 item pics unit=no secret=no reboot=no default=no Pictures
 item scores unit=no secret=no reboot=no High scores
 item ssh unit=yes secret=yes reboot=yes SSH keys" "$(run items)"
+item noted "Noted games" "home/root/data/games" no no no
+printf 'note=Only games in this folder are backed up.\n' >> "$R/opt/arca/backup.d/noted.item"
+check "note= prints a note line right after that item's line" "item noted unit=no secret=no reboot=no Noted games
+note noted Only games in this folder are backed up." "$(run items | grep -A1 '^item noted')"
+check "an item without note= gets no note line" "1" "$(run items | grep -c '^note ')"
+rm -f "$R/opt/arca/backup.d/noted.item"
 OUTP=$(run export "$W/stick/ludbox-backup" pics)
 ARCP=${OUTP#exported }
 check "default=no item exports like any other" "home/root/data/pictures/a.jpg " "$(tar -tzf "$ARCP" 2> /dev/null | grep jpg | tr '\n' ' ')"

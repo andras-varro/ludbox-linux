@@ -10,6 +10,7 @@
  * D  the last "error" line of a failed run;
  * E  which items start marked (secret never, unit-bound only on the same unit,
  *    default=no ones never in the export view but marked when restored).
+ * F  the "note <id> <text>" line (bounded, truncated, malformed refused);
  * It cannot see the page: drawing, focus and the engine itself.
  */
 #include "control_panel/backup_parse.h"
@@ -77,6 +78,17 @@ int main(void) {
     CHECK(!bk_start_marked(&lib, false, true) && !bk_start_marked(&lib, true, true));
     CHECK(bk_start_marked(&lib, false, false));   /* restoring: it was exported on purpose */
     CHECK(bk_start_marked(&lib, true, false));
+
+    /* F  note lines */
+    char nid[BK_ID_MAX], nt[BK_NOTE_MAX];
+    CHECK(bk_parse_note("note games Only games in this folder are backed up.\n", nid, sizeof nid, nt, sizeof nt));
+    CHECK(!strcmp(nid, "games") && !strcmp(nt, "Only games in this folder are backed up."));
+    CHECK(!bk_parse_note("note games", nid, sizeof nid, nt, sizeof nt));
+    CHECK(!bk_parse_note("note games   \n", nid, sizeof nid, nt, sizeof nt));
+    CHECK(!bk_parse_note("note -x text", nid, sizeof nid, nt, sizeof nt));
+    CHECK(!bk_parse_note("item games unit=no secret=no reboot=no x", nid, sizeof nid, nt, sizeof nt));
+    CHECK(bk_parse_note("note g 0123456789abcdef", nid, sizeof nid, nt, 10) && !strcmp(nt, "012345678"));   /* truncated, terminated */
+    CHECK(bk_parse_item("item g unit=no secret=no reboot=no G", &it) && it.note[0] == 0);
 
     printf("backup_parse_test: %d checks, %d failed\n", checks, fails);
     return fails != 0;

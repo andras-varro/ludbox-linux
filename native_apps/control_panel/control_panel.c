@@ -699,6 +699,33 @@ void cp_confirm(const char *title, const char *message, const char *ok_text,
     confirm_open(g_state, CONFIRM_PAGE, title, message, ok_text, on_ok);
 }
 
+/* A notice: the confirmation dialog's box with one OK button.  The message is
+ * word-wrapped here at 33 characters (the width of the box at scale 2), since
+ * ModalDialog breaks lines only at '\n'; the dialog's own buffer holds 127. */
+void cp_notice(const char *title, const char *message) {
+    if (!g_state) return;
+    char buf[128];
+    size_t o = 0, line = 0;
+    const char *p = message;
+    while (*p && o < sizeof buf - 1) {
+        const char *e = p;
+        while (*e && *e != ' ') e++;
+        size_t w = (size_t)(e - p);
+        if (line && line + 1 + w > 33) { buf[o++] = '\n'; line = 0; }
+        else if (line) { buf[o++] = ' '; line++; }
+        for (size_t i = 0; i < w && o < sizeof buf - 1; i++) { buf[o++] = p[i]; line++; }
+        p = e;
+        while (*p == ' ') p++;
+    }
+    buf[o] = '\0';
+    modal_dialog_init(&confirm_dialog, title, buf, 1);
+    modal_dialog_set_button(&confirm_dialog, 0, "OK", RGB(60, 120, 60), COLOR_WHITE);
+    modal_dialog_set_focus(&confirm_dialog, 0);
+    modal_dialog_show(&confirm_dialog);
+    confirm_on_ok = NULL;
+    g_state->confirm_action = CONFIRM_PAGE;
+}
+
 int cp_reset_all_defaults(Config *cfg, char *msg, size_t len) {
     char where[200];   /* config_backup() writes a path of up to 168 bytes */
     int b = config_backup(cfg, where, sizeof(where));
