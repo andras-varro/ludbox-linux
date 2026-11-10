@@ -58,7 +58,7 @@ run() {
     local envs=()
     while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do envs+=("$1"); shift; done
     [ "${1:-}" = "--" ] && shift
-    OUT="$(env PATH="$WORK/bin:$PATH" "${envs[@]}" "$SETUP" "$@" < /dev/null 2>&1)"; RC=$?
+    OUT="$(env SETUP_EUID=1000 PATH="$WORK/bin:$PATH" "${envs[@]}" "$SETUP" "$@" < /dev/null 2>&1)"; RC=$?
 }
 
 expect_rc()       { if [ "$RC" = "$1" ]; then ok "$2 (exit $1)"; else bad "$2 — expected exit $1, got $RC"; fi; }
@@ -159,7 +159,7 @@ fi
 echo ""
 echo "5. --install-deps hands apt exactly the command it printed"
 rm -f "$WORK/argv"
-OUT="$(env PACKAGES_FILE="$WORK/all-absent" PATH="$WORK/bin:$PATH" \
+OUT="$(env SETUP_EUID=1000 PACKAGES_FILE="$WORK/all-absent" PATH="$WORK/bin:$PATH" \
         "$SETUP" --install-deps < /dev/null 2>&1)"; RC=$?
 expect_rc 0 "5a a successful install exits 0"
 if [ ! -f "$WORK/argv" ]; then
@@ -180,6 +180,30 @@ else
     else
         bad "5c printed and executed differ — printed '$printed', ran '$ARGV'"
     fi
+fi
+
+echo ""
+echo "5x. not root and no sudo: fail loudly; root: apt-get directly"
+# A PATH with apt-get but no sudo. apt-get is a recording shim, so nothing real runs.
+mkdir -p "$WORK/nosudo"
+for t in sh grep sed awk cat printf uname env id; do
+    p="$(command -v "$t" 2>/dev/null)" && ln -sf "$p" "$WORK/nosudo/$t"
+done
+{ echo '#!/bin/sh'; echo "echo \"APT-ARGV: \$*\" >> $WORK/aptargv"; echo 'exit 0'; } > "$WORK/nosudo/apt-get"
+chmod +x "$WORK/nosudo/apt-get"
+rm -f "$WORK/aptargv"
+OUT="$(env SETUP_EUID=1000 PACKAGES_FILE="$WORK/all-absent" PATH="$WORK/nosudo" \
+        "$SETUP" --install-deps < /dev/null 2>&1)"; RC=$?
+expect_rc 1 "5d non-root without sudo exits non-zero"
+expect_match 'sudo is not installed' "5e ...saying why"
+if [ ! -f "$WORK/aptargv" ]; then ok "5f ...and apt-get was not run"; else bad "5f apt-get ran without privilege"; fi
+OUT="$(env SETUP_EUID=0 PACKAGES_FILE="$WORK/all-absent" PATH="$WORK/nosudo" \
+        "$SETUP" --install-deps < /dev/null 2>&1)"; RC=$?
+expect_rc 0 "5g root without sudo installs"
+if [ "$(cat "$WORK/aptargv" 2>/dev/null)" = "APT-ARGV: install -y arca-pkg-cmd arca-pkg-run arca-pkg-py arca-pkg-file" ]; then
+    ok "5h ...by calling apt-get directly with the printed packages"
+else
+    bad "5h root apt-get argv wrong — got: $(cat "$WORK/aptargv" 2>/dev/null)"
 fi
 
 echo ""

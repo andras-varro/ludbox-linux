@@ -77,9 +77,8 @@ absent from a fresh clone. ⚠️ **Run it from WSL** — every tool it looks fo
 it refuses to run there rather than report a host that cannot build anything. The *cross-compiled*
 dependencies are not its job and install themselves.
 
-Measured in this project's WSL (2026-09-06; the cross-compilers re-measured 2026-09-29): `shellcheck` 0.7.0, `gh`, `sfdisk`, `cmake`, `bc`, `bison`,
-`flex`, `git-lfs`, `python3` with `PIL` 10.4.0, and both cross-compilers, `arm-linux-gnueabi-*` (soft-float, dynamic: native apps and ScummVM) and
-`arm-linux-gnueabihf-*` (`vnc_client`), 9.4.0 each. None of it is in Git Bash (`CLAUDE.md`, *Working from this host*).
+Measured in this project's WSL (2026-09-06; cross-compilers 2026-09-29): `shellcheck` 0.7.0, `gh`, `sfdisk`, `cmake`, `bc`, `bison`, `flex`, `git-lfs`, `python3` with `PIL` 10.4.0, and both cross-compilers (`arm-linux-gnueabi-*` soft-float for native apps and ScummVM, `arm-linux-gnueabihf-*` for `vnc_client`), 9.4.0 each. None of it is in Git Bash (`CLAUDE.md`, *Working from this host*).
+A neutral host with nothing of ours on it: `build-env/Dockerfile` (Ubuntu 20.04, user `build`) installs the package set through this script alone; its header has the build, run and cache-fill steps. A clean-container build found `gawk`, `openssh-client`, `kmod`, `pkg-config`, `unzip`, `rsync`, `cpio`, `perl`, `dosfstools` and `gcc-10` missing, so the script now lists them, and without root or `sudo` it fails instead of installing nothing.
 
 ```bash
 ./setup-build-env.sh --install-deps --scummvm

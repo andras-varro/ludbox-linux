@@ -45,10 +45,11 @@ of these tools is absent and the report would be about the shell, not the host.
   --scummvm        Also set up the upstream ScummVM tree, which is not an apt
                    package: clone it, check out the commit pinned in scummvm-arca/upstream-commit, and restore our
                    backend files. Needed only to build scummvm-arca.
-  --group <g>      Probe only these groups; repeatable. Default: all four.
+  --group <g>      Probe only these groups; repeatable. Default: all five.
                      core    every component needs these
                      decode  python3 + PIL, for fb565_to_png.py screenshots
-                     kmod    usb_host kernel modules only
+                     kmod    usb_host kernel modules only (+ modprobe, for modversions)
+                     image   rootfs (Buildroot), card image and U-Boot builds: unzip rsync cpio perl dosfstools gcc-10
                      check   shellcheck, for the host suites and the pre-deploy gate
   -h, --help       This text.
 
@@ -78,7 +79,7 @@ done
 # ⚠️ `check` is in the default set, not opt-in. shellcheck is the tool a pre-deploy gate
 # needs, and a gate that lands on a host without it cannot run — so it is a build
 # prerequisite in the same sense the cross-compiler is, even though nothing links against it.
-[ "${#SEL_GROUPS[@]}" -gt 0 ] || SEL_GROUPS=(core decode kmod check)
+[ "${#SEL_GROUPS[@]}" -gt 0 ] || SEL_GROUPS=(core decode kmod image check)
 
 # ── the shell gate ──────────────────────────────────────────────────────────
 # ⚠️ Not cosmetic, and it is why this script has an exit code of its own for it. In Git
@@ -124,6 +125,16 @@ esac
 # its libc, libasound or libstdc++ — so native_apps and ScummVM build with it. The gnueabihf
 # set stays for vnc_client's hard-float -static build, usb_host's kernel modules and
 # devmem_write, and the objdump check-arm-safe.sh and commission-offline.sh run.
+#
+# Added after a clean ubuntu:20.04 container build (Dockerfile) found them missing; the
+# consumer of each: gawk — tests/doc_check.sh uses {1,6} regex intervals, which mawk
+# (Ubuntu's default awk) lacks, so it exits 2; ssh — tests/arca_ssh_test.sh needs the real
+# client's error text; pkg-config — bluetooth/build-bluez.sh and build-bluealsa.sh;
+# modprobe (kmod) — kernel/build-bt-modules.sh `--dump-modversions`; the `image` group —
+# Buildroot (rootfs/build-rootfs.sh: unzip rsync cpio perl), rootfs/make-card-image.sh
+# (dosfstools: mkfs.vfat and fsck.vfat) and uboot/build.sh (gcc-10,
+# which U-Boot requires over the stock gcc 9). sudo is NOT a row: it is what installs, so
+# a table that probed it would have to install it with itself — see install_missing.
 packages() {
     # PACKAGES_FILE exists only so the regression can drive the probe loop over a fixture
     # table. Nothing in the shipped path sets it.
@@ -145,6 +156,16 @@ core|cmd|autoreconf|autoconf
 core|cmd|aclocal|automake
 core|cmd|libtoolize|libtool
 core|cmd|gdbus-codegen|libglib2.0-dev-bin
+core|cmd|pkg-config|pkg-config
+core|cmd|gawk|gawk
+core|cmd|ssh|openssh-client
+image|cmd|unzip|unzip
+image|cmd|rsync|rsync
+image|cmd|cpio|cpio
+image|cmd|perl|perl
+image|cmd|mkfs.vfat|dosfstools
+image|cmd|arm-linux-gnueabihf-gcc-10|gcc-10-arm-linux-gnueabihf
+kmod|cmd|modprobe|kmod
 decode|run|python3 --version|python3
 decode|py|PIL|python3-pil
 kmod|cmd|bc|bc
@@ -211,7 +232,7 @@ done < <(packages)
 if [ "$seen" -eq 0 ]; then
     echo ""
     miss "no prerequisites were probed at all — groups '${SEL_GROUPS[*]}' match nothing in the table"
-    echo "    valid groups: core decode kmod check"
+    echo "    valid groups: core decode kmod image check"
     echo ""
     exit 2
 fi
@@ -240,10 +261,26 @@ install_missing() {
 
     # Print the exact command before running it. Nothing is installed that the operator
     # has not seen spelled out first.
+    # ⚠️ Root runs apt-get directly; anyone else needs sudo. Without sudo the old code ran a
+    # command that did not exist and the failure scrolled past — now it is a loud refusal.
+    # SETUP_EUID exists only so the regression can play either user; nothing shipped sets it.
+    local priv="sudo "
+    if [ "${SETUP_EUID:-$(id -u)}" -eq 0 ]; then
+        priv=""
+    elif ! command -v sudo >/dev/null 2>&1; then
+        hdr "Cannot install"
+        miss "not root and sudo is not installed, so apt-get cannot run."
+        echo ""
+        echo "  Re-run as root, or install sudo first (as root: apt-get install -y sudo), or run:"
+        echo "    apt-get install -y ${MISSING[*]}"
+        echo ""
+        return 1
+    fi
     hdr "Installing"
-    echo "  sudo apt-get install -y ${MISSING[*]}"
+    echo "  ${priv}apt-get install -y ${MISSING[*]}"
     echo ""
-    sudo apt-get install -y "${MISSING[@]}" \
+    # shellcheck disable=SC2086
+    ${priv}apt-get install -y "${MISSING[@]}" \
         || { miss "apt-get failed — nothing further attempted"; return 1; }
     return 0
 }
