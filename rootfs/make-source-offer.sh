@@ -5,8 +5,9 @@
 #
 # Run in WSL. Nothing is rebuilt and nothing touches a device: everything it reads is a
 # local cache (the Buildroot build tree, the dependency tarballs the component scripts
-# fetch, the U-Boot clone, the ScummVM tree), plus one download (the Ubuntu glibc source
-# the static vnc_client and devmem_write embed). Every third-party member is checked
+# fetch - one that is missing is downloaded here instead, to the same place - the U-Boot
+# clone, the ScummVM tree), plus downloads (the Ubuntu glibc source the static vnc_client
+# and devmem_write embed, ScummVM's zlib and libpng). Every third-party member is checked
 # against the sha256 or commit that the component's own build script pins, and the
 # result is graded by rootfs/check-source-offer.sh before the tar is written.
 #
@@ -61,6 +62,9 @@ TAG="" OUT="" RB="${HOME}/br-rw" LEGAL="" CACHE="${HOME}/ludbox-source-cache"
 UBOOT_SRC="${HOME}/rw-uboot-build/u-boot-clone" SCUMMVM_SRC="${REPO}/scummvm"
 DEV=0
 IMAGES=()
+# Every tar this script writes records root, numeric 0/0, not the building user (git archive
+# already does).
+TAR_OWNER=("--owner=0" "--group=0" --numeric-owner)
 while [ "$#" -gt 0 ]; do
     case "$1" in
         -h|--help) usage; exit 0 ;;
@@ -151,11 +155,30 @@ mkdir -p "$STAGE"/{repo,buildroot,kernel,uboot,scummvm,vnc_client,bluetooth,nati
 CSV="$STAGE/SOURCES.csv"
 echo "component,version,licence,binaries,member,url,sha256,pin" >"$CSV"
 
+# fill_cache <comp> <url> <file> <pin>: a cache the component's build script has not filled
+# is downloaded here, to the place that script would put it, and checked against the same
+# pin the SOURCES.csv row names ("grep:<file in repo>:<needle>": the sha256 on the first
+# line holding the needle). A pin of any other kind has no hash to check, so nothing is fetched.
+fill_cache() {
+    local comp="$1" url="$2" file="$3" pin="$4" want rest
+    case "$pin" in grep:*) ;; *) return 1 ;; esac
+    rest="${pin#grep:}"
+    want="$(pin_hex "$REPO/${rest%%:*}" "${rest#*:}" 64)"
+    [ -n "$want" ] || return 1
+    mkdir -p "$(dirname "$file")"
+    info "$comp: not cached, downloading $url"
+    curl -fsSL -o "$file.part" "$url" || { rm -f "$file.part"; return 1; }
+    if ! echo "$want  $file.part" | sha256sum -c --quiet - >/dev/null 2>&1; then
+        rm -f "$file.part"; die "$comp: the download of $url does not match the sha256 pinned in $pin"
+    fi
+    mv "$file.part" "$file"
+}
+
 # add <component> <version> <licence> <binaries> <member> <url> <source file> <pin>
 add() {
     local comp="$1" ver="$2" lic="$3" bins="$4" member="$5" url="$6" src="$7" pin="$8" sum
     lic="${lic//,/;}"; bins="${bins//,/;}"
-    [ -f "$src" ] || die "$comp: $src is not there (run the component's build script once to fill its cache)"
+    [ -f "$src" ] || fill_cache "$comp" "$url" "$src" "$pin" || die "$comp: $src is not there and could not be fetched (run the component's build script once to fill its cache)"
     cp "$src" "$STAGE/$member"
     sum="$(sha256sum "$STAGE/$member" | cut -d' ' -f1)"
     printf '%s,%s,%s,%s,%s,%s,%s,%s\n' "$comp" "$ver" "$lic" "$bins" "$member" "$url" "$sum" "$pin" >>"$CSV"
@@ -174,7 +197,7 @@ if [ "$DIRTY" -eq 0 ]; then
 else
     # A development build packs the tracked files as they are on disk (staged additions
     # included), so a change that is not yet committed is in the archive.
-    ( cd "$REPO" && git ls-files -z -c -- . ':!HardwarePhotos' | tar --null -T - --transform "s|^|arca-${TAG}/|" -cf - 2>/dev/null ) \
+    ( cd "$REPO" && git ls-files -z -c -- . ':!HardwarePhotos' | tar "${TAR_OWNER[@]}" --null -T - --transform "s|^|arca-${TAG}/|" -cf - 2>/dev/null ) \
         | xz -T0 -6 >"$STAGE/repo/arca-${TAG}.tar.xz"
 fi
 add_made "arca" "$TAG" "MIT;mixed" "native_apps games and tools, app_launcher, devmem_write, scripts, patches, device tree, kernel config" \
@@ -384,7 +407,7 @@ info "grading the offer"
 check_source_offer "$STAGE" || die "the offer failed its own check; nothing was written (stage left at $STAGE)"
 
 info "writing $NAME.tar"
-tar -cf "$OUT_ABS/$NAME.tar" -C "$OUT_ABS" "$NAME"
+tar "${TAR_OWNER[@]}" -cf "$OUT_ABS/$NAME.tar" -C "$OUT_ABS" "$NAME"
 ( cd "$OUT_ABS" && sha256sum "$NAME.tar" >"$NAME.tar.sha256" )
 rm -rf "$STAGE" "$OUT_ABS/legal-info.log"
 ls -l "$OUT_ABS/$NAME.tar" "$OUT_ABS/$NAME.tar.sha256"

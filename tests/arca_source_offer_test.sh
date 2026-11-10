@@ -36,7 +36,7 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 CSO="${CSO:-$REPO_DIR/rootfs/check-source-offer.sh}"
-MSO="$REPO_DIR/rootfs/make-source-offer.sh"
+MSO="${MSO:-$REPO_DIR/rootfs/make-source-offer.sh}"
 # MCI=<path> runs the card-image cases (group F) against another copy of make-card-image.sh.
 MCI="${MCI:-$REPO_DIR/rootfs/make-card-image.sh}"
 T="$(mktemp -d)"
@@ -180,6 +180,30 @@ if [ "$rc" = 1 ] && grep -q 'not on any remote branch' "$T/out" && [ ! -e "$T/go
 echo "# touched" >>"$T/g/rootfs/make-source-offer.sh"
 "$T/g/rootfs/make-source-offer.sh" --tag t --out "$T/gout" >"$T/out" 2>&1; rc=$?
 if [ "$rc" = 1 ] && grep -q 'uncommitted changes' "$T/out" && [ ! -e "$T/gout" ]; then ok "E6 a dirty tree is refused before anything is written"; else bad "E6 rc $rc, $(cat "$T/out")"; fi
+# E7: every tar that writes an archive records root 0/0 (text: a created-archive call without the
+# owner flags is the defect)
+untarred="$(grep -v '^[[:space:]]*#' "$MSO" | grep -E '(^|[ (|])tar .*-cf ' | grep -vc 'TAR_OWNER' || true)"
+if [ "$untarred" = 0 ] && grep -q '^TAR_OWNER=("--owner=0" "--group=0" --numeric-owner)$' "$MSO"; then ok "E7 every tar -cf in make-source-offer carries the root 0/0 owner flags"; else bad "E7 $untarred tar call(s) without TAR_OWNER"; fi
+# E8-E10: a cache that is missing is fetched (file:// stands in for the network), checked
+# against the pin in the build script, and a wrong download is refused and leaves no file.
+mkdir -p "$T/fc/repo/c" "$T/fc/up"
+echo payload >"$T/fc/up/a.tgz"
+printf 'X_SHA256=%s\n' "$(sha "$T/fc/up/a.tgz")" >"$T/fc/repo/c/build.sh"
+printf 'X_SHA256=%s\n' "$(printf 'z' | sha256sum | cut -d' ' -f1)" >"$T/fc/repo/c/bad.sh"
+awk '/^fill_cache\(\) \{/,/^}/' "$MSO" >"$T/fc/fn.sh"
+fcrun() { ( # shellcheck disable=SC2034
+  REPO="$T/fc/repo"; die() { echo "DIE $*"; exit 1; }; info() { :; }
+  # shellcheck source=../rootfs/check-source-offer.sh
+  . "$REPO_DIR/rootfs/check-source-offer.sh"
+  # shellcheck source=/dev/null
+  . "$T/fc/fn.sh"; fill_cache "$@" ); }
+fcrun comp "file://$T/fc/up/a.tgz" "$T/fc/cache/a.tgz" "grep:c/build.sh:X_SHA256=" >"$T/out" 2>&1; rc=$?
+if [ "$rc" = 0 ] && cmp -s "$T/fc/up/a.tgz" "$T/fc/cache/a.tgz"; then ok "E8 a missing cache is downloaded to its place when the pin verifies"; else bad "E8 rc $rc, $(cat "$T/out")"; fi
+rm -f "$T/fc/cache/a.tgz"
+fcrun comp "file://$T/fc/up/a.tgz" "$T/fc/cache/a.tgz" "grep:c/bad.sh:X_SHA256=" >"$T/out" 2>&1; rc=$?
+if [ "$rc" = 1 ] && grep -q 'does not match' "$T/out" && [ ! -e "$T/fc/cache/a.tgz" ] && [ ! -e "$T/fc/cache/a.tgz.part" ]; then ok "E9 a download that fails its pin is refused and leaves no file"; else bad "E9 rc $rc, $(cat "$T/out")"; fi
+fcrun comp "file://$T/fc/up/a.tgz" "$T/fc/cache/a.tgz" "none:" >"$T/out" 2>&1; rc=$?
+if [ "$rc" != 0 ] && [ ! -e "$T/fc/cache/a.tgz" ]; then ok "E10 a pin with no hash fetches nothing"; else bad "E10 rc $rc"; fi
 
 # ── F ───────────────────────────────────────────────────────────────────────
 # make-card-image.sh needs root and a loop device, so the licence step is extracted from the

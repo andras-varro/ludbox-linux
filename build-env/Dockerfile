@@ -16,11 +16,8 @@
 #      set GIT_LFS_SKIP_SMUDGE:  git clone <url> ~/ludbox && cd ~/ludbox
 #   2. ./setup-build-env.sh --scummvm   (the host packages are already here; this clones the
 #      pinned ScummVM tree, which is not an apt package)
-#   3. Fill the caches with the repo's own device-less scripts; release.sh --stage-only
-#      --source-offer needs them, because rootfs/make-source-offer.sh archives their sources:
-#        vnc_client/build-deps.sh  bluetooth/build-bluez.sh  bluetooth/build-bluealsa.sh
-#        native_apps/build-alsa-lib.sh  native_apps/build-libvterm.sh
-#   4. ./tests/run-all.sh, then ./release.sh --stage-only (add --source-offer for the offer).
+#   3. ./tests/run-all.sh, then ./release.sh --stage-only (add --source-offer for the offer;
+#      rootfs/make-source-offer.sh downloads any dependency tarball no build has cached yet).
 FROM ubuntu:20.04
 ENV DEBIAN_FRONTEND=noninteractive TZ=UTC LANG=C.UTF-8 LC_ALL=C.UTF-8
 RUN apt-get update \
