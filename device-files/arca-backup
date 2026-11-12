@@ -163,10 +163,11 @@ cmd_export() {
     echo "date=$stamp"
     echo "ids=$*"
   } > "$ROOT/$INFO" || die "cannot write the info member"
-  echo "$INFO" >> "$TMP/list"
   mkdir -p "$dir" || die "cannot create $dir"
   out="$dir/ludbox-backup-$host-$stamp.tar.gz"
-  sort -u "$TMP/list" | prune_covered > "$TMP/list.u"
+  # The info member goes FIRST: read_info stops reading after it, so opening a multi-GB archive costs
+  # a few KB of gzip, not the whole stream. It is added here, not to list, so sort cannot move it.
+  { echo "$INFO"; sort -u "$TMP/list" | prune_covered | awk -v i="$INFO" '$0 != i'; } > "$TMP/list.u"
   # Stream tar into gzip. POSIX sh has no pipefail: tar's status goes to a file from inside the left
   # side of the pipe, gzip's is the pipeline's own. A missing or non-zero status file is a failure.
   PART="$out.part"
@@ -198,7 +199,17 @@ cmd_archives() {
 read_info() {
   [ -f "$1" ] || die "no such archive $1"
   mktmp
-  gzip -dc "$1" 2> /dev/null | tar -xf - -C "$TMP" "$INFO" 2> /dev/null
+  # Fast path: export writes the info member first, and it is 4 short lines (a 512-byte header and
+  # one data block, ~1 KB even with a hundred ids), so the first 256 KiB of the decompressed stream
+  # holds it with wide margin. head ends the pipe; gzip stops on SIGPIPE; tar of the truncated tail
+  # errors after the member is out, which is fine. Accepted only with its ids= line, so a member cut by
+  # the bound is never trusted.
+  gzip -dc "$1" 2> /dev/null | head -c 262144 | tar -xf - -C "$TMP" "$INFO" 2> /dev/null
+  grep -q '^ids=' "$TMP/$INFO" 2> /dev/null || {
+    # Archives made before the info member moved to the front have it last: read the whole stream.
+    rm -f "$TMP/$INFO"
+    gzip -dc "$1" 2> /dev/null | tar -xf - -C "$TMP" "$INFO" 2> /dev/null
+  }
   # The status is the last stage's only; a bad gzip stream leaves no info member, which is caught here.
   [ -f "$TMP/$INFO" ] || die "not a backup archive $1"
   INFO_HOST=$(getkey "$TMP/$INFO" host)

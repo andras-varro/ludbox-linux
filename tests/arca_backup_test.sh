@@ -88,6 +88,34 @@ item hostname unit=yes secret=no reboot=yes Host name" "$(run contents "$ARC")"
 check "archives lists it" "archive $(basename "$ARC")" "$(run archives "$W/stick/ludbox-backup")"
 check "archives of a missing dir is empty, exit 0" "" "$(run archives "$W/none"; echo -n)"
 
+echo "== archive open reads only the front"
+check "export writes the info member first" "tmp/ludbox-backup.info" "$(tar -tzf "$ARC" 2> /dev/null | head -n 1)"
+# A new archive with a big incompressible tail, cut to 60%: gzip fails at the cut, so only an open that
+# stops after the front member can still list it. The pre-change engine puts info last and loses it.
+item bulk "Bulk" "home/root/data/bulk" no no no
+mkdir -p "$R/home/root/data/bulk"
+head -c 3000000 /dev/urandom > "$R/home/root/data/bulk/blob"
+OUTT=$(run export "$W/stickcut/ludbox-backup" bulk)
+ARCT=${OUTT#exported }
+SZ=$(wc -c < "$ARCT")
+head -c $((SZ * 6 / 10)) "$ARCT" > "$W/cut.tar.gz"
+check "info is still member 1 with a bulk tail" "tmp/ludbox-backup.info" "$(tar -tzf "$ARCT" 2> /dev/null | head -n 1)"
+check "contents of a truncated new archive still lists its items" "item bulk unit=no secret=no reboot=no Bulk" "$(run contents "$W/cut.tar.gz" | grep '^item')"
+# Old layout: info last (as archives already in the field are). Opens through the full-read fallback.
+mkdir -p "$W/oldl/tmp"
+printf 'host=oldhost\nversion=0.9\ndate=20200101-0000\nids=scores\n' > "$W/oldl/tmp/ludbox-backup.info"
+(cd "$R" && tar -cf "$W/old.tar" home/root/data/snake.hig && cd "$W/oldl" && tar -rf "$W/old.tar" tmp/ludbox-backup.info)
+gzip -c "$W/old.tar" > "$W/ludbox-backup-old.tar.gz"
+check "old layout has info last" "tmp/ludbox-backup.info" "$(tar -tzf "$W/ludbox-backup-old.tar.gz" | tail -n 1)"
+check "an old-layout archive still opens (fallback)" "info host=oldhost version=0.9 date=20200101-0000
+item scores unit=no secret=no reboot=no High scores" "$(run contents "$W/ludbox-backup-old.tar.gz")"
+rm -f "$R/home/root/data/snake.hig"
+check "an old-layout archive still imports" "imported scores
+done reboot=no" "$(run import "$W/ludbox-backup-old.tar.gz" scores)"
+check "old-layout import restored the file" "100" "$(cat "$R/home/root/data/snake.hig")"
+check "a non-archive is still refused" "error not a backup archive $W/cut.tar.gz.no" "$(echo junk > "$W/cut.tar.gz.no"; run contents "$W/cut.tar.gz.no")"
+rm -rf "$R/home/root/data/bulk" "$R/opt/arca/backup.d/bulk.item" "$W/stickcut"
+
 echo "== round trip into a different unit"
 R_SAVE="$R"
 R="$W/root2"
