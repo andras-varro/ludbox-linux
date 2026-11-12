@@ -12,6 +12,7 @@
  *   IMPORT    that archive's items (secret ones, and unit-bound ones from
  *             another unit, start unmarked, with a warning); IMPORT SELECTED
  *   DONE      "IMPORTED n ITEMS"; REBOOT NOW only if the engine said so
+ * IMPORT also carries a SELECT ALL / SELECT NONE strip under its list (one list row less).
  *
  * The stick is found the way file_manager does: `arca-storage mount`, parsed by
  * fm_parse_storage_line().  file_manager asks once per visit (and on RESCAN);
@@ -81,9 +82,9 @@ static bool     lv_ready;
 static char     detail_buf[8][24];
 static int      row_i;
 
-static Button btn_a, btn_b, btn_up, btn_dn;
+static Button btn_a, btn_b, btn_up, btn_dn, btn_sel;
 static bool   btn_b_shown;
-static int    hdr_y, info_y, list_y, btn_y;
+static int    hdr_y, info_y, list_y, btn_y, list_full_h;
 static UiRect list_rect;
 static bool   prev_touch;
 static int    last_x, last_y;
@@ -92,6 +93,7 @@ static int    last_x, last_y;
 #define BTN_H      44
 #define SCROLL_W   44
 #define INFO_PITCH 18
+#define SEL_H      36   /* the SELECT ALL strip under the IMPORT list */
 
 /* ── The list source ────────────────────────────────────────────────────── */
 
@@ -230,7 +232,39 @@ static void set_buttons(const char *a, uint32_t ca, const char *b, uint32_t cb) 
     if (b) button_init_full(&btn_b, CONTENT_RIGHT - w, btn_y, w, BTN_H, b, cb, COLOR_WHITE, BTN_COLOR_HIGHLIGHT, 2);
 }
 
+/* The list's rect, the scroll buttons and (IMPORT only) the SELECT ALL strip, from list_y and
+ * list_full_h.  IMPORT gives the strip its height and one list row less; every other view keeps the
+ * full height.  lv.rect and list_rect move together: the first sets the rows drawn, the second is
+ * the hit-test. */
+static void apply_list_geometry(void) {
+    int list_h = list_full_h - (view == V_IMPORT ? SEL_H + 4 : 0);
+    list_rect = (UiRect){ CONTENT_LEFT, list_y, CONTENT_WIDTH - SCROLL_W - 6, list_h };
+    if (lv_ready) lv.rect = list_rect;
+    int sh = list_h / 2 - 3;
+    if (sh > BTN_H) sh = BTN_H;
+    if (sh < 8) sh = 8;
+    button_init_full(&btn_up, CONTENT_RIGHT - SCROLL_W, list_y, SCROLL_W, sh, "UP",
+                     RGB(80, 80, 80), COLOR_WHITE, BTN_COLOR_HIGHLIGHT, 1);
+    button_init_full(&btn_dn, CONTENT_RIGHT - SCROLL_W, list_y + list_h - sh, SCROLL_W, sh, "DN",
+                     RGB(80, 80, 80), COLOR_WHITE, BTN_COLOR_HIGHLIGHT, 1);
+    button_init_full(&btn_sel, CONTENT_LEFT, list_y + list_h + 4, CONTENT_WIDTH, SEL_H,
+                     lv_ready && lv.count > 0 && lv_mark_count(&lv) == lv.count ? "SELECT NONE" : "SELECT ALL",
+                     RGB(60, 60, 90), COLOR_WHITE, BTN_COLOR_HIGHLIGHT, 2);
+}
+
+/* SELECT ALL / SELECT NONE: every row marked -> clear them all, else mark the rest.  A row the unit
+ * does not know never reached the list (do_contents counts it in n_skipped), so nothing here can
+ * mark one. */
+static void select_all_toggle(void) {
+    bool all = lv.count > 0 && lv_mark_count(&lv) == lv.count;
+    int cur = lv.cursor;
+    for (int i = 0; i < lv.count; i++)
+        if (lv_is_marked(&lv, i) == all) { lv_move_to(&lv, i); lv_key(&lv, LV_KEY_MARK); }
+    lv_move_to(&lv, cur);
+}
+
 static void apply_view_buttons(void) {
+    apply_list_geometry();   /* also refreshes the SELECT ALL / SELECT NONE label */
     const uint32_t green = RGB(0, 110, 60), grey = RGB(80, 80, 80);
     switch (view) {
     case V_HOME:     set_buttons("EXPORT TO USB", green, "IMPORT FROM USB", RGB(0, 90, 150)); break;
@@ -251,6 +285,7 @@ static void apply_view_buttons(void) {
 
 static void go_view(View v) {
     view = v;
+    apply_list_geometry();
     list_reload(v == V_IMPORT ? imp_foreign : false);
     apply_view_buttons();
 }
@@ -277,9 +312,9 @@ static void backup_layout(void) {
     info_y = y;  y += 3 * INFO_PITCH + 4;
     list_y = y;
     btn_y = SCREEN_SAFE_BOTTOM - BTN_H - 2;
-    int list_h = btn_y - 6 - list_y;
-    int list_w = CONTENT_WIDTH - SCROLL_W - 6;
-    list_rect = (UiRect){ CONTENT_LEFT, list_y, list_w, list_h };
+    list_full_h = btn_y - 6 - list_y;
+    lv_ready = false;        /* lv was just freed: geometry must not touch it */
+    apply_list_geometry();   /* list_rect for this view; lv_init below takes it */
     lv_init(&lv, (LvSource){ src_count, src_row, NULL }, list_rect, ROW_H);
     lv.active = true;
     lv_ready = true;
@@ -292,13 +327,6 @@ static void backup_layout(void) {
         list_reload(view == V_IMPORT ? imp_foreign : false);
     }
 
-    int sh = list_h / 2 - 3;
-    if (sh > BTN_H) sh = BTN_H;
-    if (sh < 8) sh = 8;
-    button_init_full(&btn_up, CONTENT_RIGHT - SCROLL_W, list_y, SCROLL_W, sh, "UP",
-                     RGB(80, 80, 80), COLOR_WHITE, BTN_COLOR_HIGHLIGHT, 1);
-    button_init_full(&btn_dn, CONTENT_RIGHT - SCROLL_W, list_y + list_h - sh, SCROLL_W, sh, "DN",
-                     RGB(80, 80, 80), COLOR_WHITE, BTN_COLOR_HIGHLIGHT, 1);
     apply_view_buttons();
 
     /* ⚠️ THE RECEIPT: everything hangs off CONTENT_Y, which comes from a
@@ -306,12 +334,13 @@ static void backup_layout(void) {
      * a screenshot and is dead to a finger. */
     {
         int bottom = btn_y + BTN_H - CONTENT_Y;
+        int imp_rows = lv_vis_rows(list_full_h - SEL_H - 4, ROW_H);   /* IMPORT: the SELECT ALL strip costs rows */
         const char *verdict = bottom > CONTENT_H ? "⚠ PAST CONTENT BOTTOM"
-                            : lv_visible_rows(&lv) < 3 ? "⚠ LIST UNDER 3 ROWS"
+                            : lv_visible_rows(&lv) < 3 || imp_rows < 3 ? "⚠ LIST UNDER 3 ROWS"
                             : "fits";
-        printf("control_panel: backup stack %s — bottom +%d of CONTENT_H %d, list %dx%d = %d rows "
+        printf("control_panel: backup stack %s — bottom +%d of CONTENT_H %d, list %dx%d = %d rows (import %d) "
                "(safe %dx%d, %s)\n", verdict, bottom, CONTENT_H, list_rect.w, list_rect.h,
-               lv_visible_rows(&lv), SCREEN_SAFE_WIDTH, SCREEN_SAFE_HEIGHT,
+               lv_visible_rows(&lv), imp_rows, SCREEN_SAFE_WIDTH, SCREEN_SAFE_HEIGHT,
                CONTENT_WIDTH < 600 ? "portrait" : "landscape");
     }
 }
@@ -403,6 +432,7 @@ static void backup_draw(Framebuffer *fb) {
             button_draw(fb, &btn_dn);
         }
     }
+    if (view == V_IMPORT) button_draw(fb, &btn_sel);
     button_draw(fb, &btn_a);
     if (btn_b_shown) button_draw(fb, &btn_b);
 }
@@ -649,6 +679,11 @@ static CpPageResult backup_input(Config *cfg, int tx, int ty, bool touching, uin
         if (a) { go_view(V_HOME); act = CP_PAGE_REDRAW; }
         break;
     case V_IMPORT:
+        if (button_update(&btn_sel, tx, ty, touching, now)) {
+            select_all_toggle();
+            apply_view_buttons();
+            act = CP_PAGE_REDRAW;
+        }
         if (a) {
             char msg[80];
             int n = lv_mark_count(&lv);
@@ -684,6 +719,7 @@ static int backup_focusables(UiRect *out, int max) {
             n = focus_add_button(out, n, max, &btn_dn);
         }
     }
+    if (view == V_IMPORT && pending == OP_NONE) n = focus_add_button(out, n, max, &btn_sel);
     n = focus_add_button(out, n, max, &btn_a);
     if (btn_b_shown) n = focus_add_button(out, n, max, &btn_b);
     return n;
