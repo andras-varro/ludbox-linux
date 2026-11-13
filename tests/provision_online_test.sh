@@ -96,7 +96,7 @@ for a in "$@"; do last="$a"; done
 # uploads also name the remote work dir, and GNU tar reads a host:path target
 # as a remote archive: it dials the dummy host and hangs until the timeout.
 case "$last" in *:*) exit 0 ;; esac
-case "$*" in *:/tmp/arca-prov-backup.*) tar -czf "$last" -C "$FAKE_FIX" etc/hostname || exit 1 ;; esac
+case "$*" in *:/var/lib/arca-prov-backup.*) tar -czf "$last" -C "$FAKE_FIX" etc/hostname || exit 1 ;; esac
 exit 0
 FAKE
 chmod +x "$TMP/bin/ssh" "$TMP/bin/scp"

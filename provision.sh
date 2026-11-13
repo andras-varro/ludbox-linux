@@ -405,10 +405,13 @@ echo "════════════════════════�
 # /usr/sbin/arca-backup (this very run installs it), and a copy from the repo is the one
 # whose behaviour the host knows. It reads the repo's item files from the same scratch
 # directory (ARCA_BACKUP_ITEMS), so nothing is written outside it before the backup exists.
-# Every id is exported, secrets included.
+# Every id is exported, secrets included. The scratch directory is on the root filesystem,
+# never /tmp: /tmp is the 117 MB tmpfs /var/volatile, and a unit with games and pictures
+# exports more than a gigabyte (measured: 1.5 GB, "No space left on device"). No item
+# covers /var/lib/arca-prov-backup.*, so the export does not archive itself.
 BACKUP_FILE=""
 backup_unit() {
-    local rd="/tmp/arca-prov-backup.$$" bk="$REPO_ROOT/backups" f ids line out rc=0
+    local rd="/var/lib/arca-prov-backup.$$" bk="$REPO_ROOT/backups" f ids line out rc=0
     local items=("$REPO_ROOT"/*/backup.d/*.item)
     [[ -f "${items[0]}" ]] || { warn "no */backup.d/*.item in the repo"; return 1; }
     command -v gzip > /dev/null || { warn "gzip not installed on this host"; return 1; }
