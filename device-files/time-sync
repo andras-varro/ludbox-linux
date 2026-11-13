@@ -1,17 +1,58 @@
 #!/bin/sh
-# Simple time synchronization for Arca
-# Syncs time with time server if network is available.
-# Try multiple time servers in order using rdate (RFC 868 Time Protocol).
+# Time synchronization for Arca: rdate (RFC 868) against the NIST servers, then hwclock -w.
+#
+# The RTC runs on a supercap that holds hours to days, so a unit unplugged longer boots in
+# 1999/2000. A single attempt at boot fails whenever the network is not up yet (DHCP, Wi-Fi
+# association), and then the clock stays wrong for the whole session — measured on a unit
+# that booted at 1999-12-31 while a manual rdate a few minutes later succeeded. So this
+# retries in the background: every 10 s for the first 5 minutes, then hourly, and keeps
+# re-syncing hourly after a success so the RTC is fresh whenever power goes away.
+# It returns at once, so it never holds up the boot.
 
-# Wait a bit for network to be fully up
-sleep 2
+PIDFILE=/var/run/time-sync.pid
 
-for server in time.nist.gov time-a-g.nist.gov time-b-g.nist.gov time-c-g.nist.gov; do
-    if rdate -s "$server" >/dev/null 2>&1; then
-        hwclock -w
-        logger "time-sync: Successfully synced time with $server"
-        exit 0
-    fi
-done
+sync_once() {
+    for server in time.nist.gov time-a-g.nist.gov time-b-g.nist.gov time-c-g.nist.gov; do
+        if rdate -s "$server" >/dev/null 2>&1; then
+            hwclock -w
+            echo "$server"
+            return 0
+        fi
+    done
+    return 1
+}
 
-logger "time-sync: Failed to sync time with any time server"
+loop() {
+    tries=0
+    synced=0
+    while :; do
+        if server=$(sync_once); then
+            [ "$synced" = 1 ] || logger "time-sync: Successfully synced time with $server"
+            synced=1
+            sleep 3600
+        else
+            tries=$((tries + 1))
+            if [ "$tries" -lt 30 ]; then
+                sleep 10
+            else
+                [ "$tries" = 30 ] && logger "time-sync: Failed to sync time for 5 minutes; retrying hourly"
+                sleep 3600
+            fi
+        fi
+    done
+}
+
+case "${1:-start}" in
+    start)
+        if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+            exit 0
+        fi
+        (loop) </dev/null >/dev/null 2>&1 &
+        echo $! > "$PIDFILE"
+        ;;
+    stop)
+        [ -f "$PIDFILE" ] && kill "$(cat "$PIDFILE")" 2>/dev/null
+        rm -f "$PIDFILE"
+        ;;
+esac
+exit 0
