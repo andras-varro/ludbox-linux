@@ -1408,8 +1408,13 @@ Device:  /dev/rtc0
 Driver:  twl_rtc (TWL4030 integrated)
 ```
 
-Working correctly — `hwclock -r` matches `date`, and `provision.sh` already does `hwclock -w`
-after `rdate`. `/etc/localtime` and `/etc/timezone` are written by the Control Panel only (System page APPLY, atomically); nothing in `device-files/`, `rootfs/board/` or `provision.sh` writes them [measured by grep].
+Works on most units — `hwclock -r` matches `date`, and `device-files/time-sync` does `hwclock -w`
+after each successful `rdate`, retrying in the background (10 s, then hourly), so the system clock is right
+within about 25 s of boot whenever there is network [measured 2026-11-13]. **One board's RTC is frozen
+at `2000-01-01 00:00:00`: it does not tick, and `hwclock -w` returns 0 and is ignored** [n=1, measured
+2026-11-13]. A card swap with a working unit kept the fault on the board under both kernel builds, and
+removing a powered USB hub did not clear it; whether a long unplug (supercap drained) clears it is
+[unverified]. Without network such a unit boots at 2000. `/etc/localtime` and `/etc/timezone` are written by the Control Panel only (System page APPLY, atomically); nothing in `device-files/`, `rootfs/board/` or `provision.sh` writes them [measured by grep].
 
 **Hold-up is a supercapacitor, not a battery.** `U17` is a Panasonic/Matsushita **"Gold Cap"
 5.5 V 0.47 F** supercap (`GC5.5V0.47F`). MADC channel 9 reads **3184 mV**, meaning the cap is
@@ -1419,7 +1424,7 @@ charged — not that a cell is healthy.
   Supercaps age (ESR climbs, capacitance falls) over decades, not years. One less worry on
   eight-year-old hardware.
 - **But hold-up is hours-to-days, not months.** **Expect the clock to be wrong after any extended
-  unplugged period.** That is why `provision.sh` does time-sync at boot, and it means anything
+  unplugged period.** That is why `device-files/time-sync` syncs at boot, and it means anything
   trusting the RTC across a shelf-storage gap needs a sanity check rather than blind faith.
 
 ### 3.11 ADC and temperature (TWL4030 MADC)
