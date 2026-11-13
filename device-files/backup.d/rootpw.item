@@ -1,0 +1,7 @@
+name=Root password
+line=etc/shadow:root:
+unit=yes
+secret=yes
+reboot=no
+default=no
+note=Restores only the root password; other accounts are left as they are.

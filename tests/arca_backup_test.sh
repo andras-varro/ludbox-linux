@@ -223,6 +223,37 @@ printf '#!/bin/sh\ncat > /dev/null\nexit 1\n' > "$CAP/gzip"; chmod +x "$CAP/gzip
 check "gzip failing: error" "error tar failed" "$(run export "$W/fail2/b" big)"
 check "gzip failing: no archive and no .part" "" "$(ls "$W/fail2/b")"
 SHIM="$SHIM_SAVE"
+echo "== line= item: root's line of etc/shadow"
+printf 'name=Root password\nline=etc/shadow:root:\nunit=yes\nsecret=yes\nreboot=no\ndefault=no\n' > "$R/opt/arca/backup.d/rootpw.item"
+# shellcheck disable=SC2016
+printf 'root:$6$OLD$aaaa:1:0:99999:7:::\ndaemon:*:1:0:99999:7:::\nsvc:$6$X$bbbb:1:0:99999:7:::\n' > "$R/etc/shadow"
+chmod 600 "$R/etc/shadow"
+check "line item prints with secret=yes default=no" "item rootpw unit=yes secret=yes reboot=no default=no Root password" "$(run items | grep '^item rootpw')"
+OUTS=$(run export "$W/stickpw/b" rootpw scores)
+ARCS=${OUTS#exported }
+check "export carries only the staged root line, not the shadow file" "tmp/ludbox-line-rootpw" "$(tar -tzf "$ARCS" 2> /dev/null | grep -v 'ludbox-backup.info\|\.hig$')"
+check "the staged line is root's, one line" "root:\$6\$OLD\$aaaa:1:0:99999:7:::" "$(tar -xzOf "$ARCS" tmp/ludbox-line-rootpw 2> /dev/null)"
+check "no staged line left in the root's tmp" "" "$(find "$R/tmp" -name "ludbox-line*")"
+# shellcheck disable=SC2016
+printf 'root:$6$NEW$zzzz:9:0:99999:7:::\ndaemon:*:5:0:99999:7:::\nother:$6$Y$cccc:2:0:99999:7:::\n' > "$R/etc/shadow"
+chmod 640 "$R/etc/shadow"
+cp "$R/etc/shadow" "$W/shadow.before"
+check "import without the item selected leaves shadow untouched" "same" "$(run import "$ARCS" scores > /dev/null; cmp -s "$W/shadow.before" "$R/etc/shadow" && echo same)"
+check "import of rootpw reports done" "imported rootpw
+done reboot=no" "$(run import "$ARCS" rootpw)"
+check "only root's line changed" "root:\$6\$OLD\$aaaa:1:0:99999:7:::
+daemon:*:5:0:99999:7:::
+other:\$6\$Y\$cccc:2:0:99999:7:::" "$(cat "$R/etc/shadow")"
+check "shadow mode kept" "640" "$(stat -c %a "$R/etc/shadow" 2> /dev/null || stat -f %Lp "$R/etc/shadow")"
+check "no temp file left beside shadow" "shadow" "$(find "$R/etc" -name "shadow*" | sed "s,.*/,,")"
+printf 'daemon:*:5:0:99999:7:::\n' > "$R/etc/shadow"
+run import "$ARCS" rootpw > /dev/null
+check "a target without a root line gets it added, the rest kept" "daemon:*:5:0:99999:7:::
+root:\$6\$OLD\$aaaa:1:0:99999:7:::" "$(cat "$R/etc/shadow")"
+OUTN=$(run export "$W/stickpw/n" scores)
+cp "$R/etc/shadow" "$W/shadow.before"
+check "an archive without the member: import of rootpw refused (item not in it)" "error item not in archive rootpw" "$(run import "${OUTN#exported }" rootpw)"
+rm -f "$R/opt/arca/backup.d/rootpw.item"
 rm -rf "$W"
 }
 

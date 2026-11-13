@@ -42,6 +42,7 @@ ITEMDIR="${ARCA_BACKUP_ITEMS:-$ROOT/opt/arca/backup.d}"   # override: provision.
 INFO=tmp/ludbox-backup.info
 TMP=""
 PART=""
+LINESTAGED=""
 
 die() {
   echo "error $*"
@@ -52,6 +53,7 @@ cleanup() {
   [ -n "$TMP" ] && rm -rf "$TMP"
   [ -n "$PART" ] && rm -f "$PART"
   rm -f "$ROOT/$INFO"
+  [ -n "$LINESTAGED" ] && rm -f "$ROOT/tmp/ludbox-line-"*
 }
 trap cleanup EXIT
 trap 'exit 1' INT TERM
@@ -135,6 +137,42 @@ prune_covered() {
     }'
 }
 
+# line_spec <id>: sets LPATH and LPFX from the item's line=<path>:<prefix>; fails when it has none.
+# Such an item backs up one line of a shared file (root's line of etc/shadow), not the whole file.
+line_spec() {
+  ls_v=$(getkey "$ITEMDIR/$1.item" line)
+  [ -n "$ls_v" ] || return 1
+  LPATH=${ls_v%%:*}
+  LPFX=${ls_v#*:}
+  case "$LPATH" in "" | /* | .. | ../* | */.. | */../*) return 1 ;; esac
+  [ -n "$LPFX" ]
+}
+
+# line_stage <id>: writes tmp/ludbox-line-<id> under the root with the first line of LPATH that
+# starts with LPFX (nothing if there is none); the member the archive carries for a line= item.
+line_stage() {
+  ( umask 077; awk -v p="$LPFX" 'index($0, p) == 1 { print; exit }' "$ROOT/$LPATH" 2> /dev/null > "$ROOT/tmp/ludbox-line-$1" )
+  [ -s "$ROOT/tmp/ludbox-line-$1" ] || rm -f "$ROOT/tmp/ludbox-line-$1"
+}
+
+# line_restore <member-file>: replaces (or adds) that one line in LPATH, atomically: a copy
+# made with cp -p keeps mode and owner, is rewritten in the same directory and renamed over.
+line_restore() {
+  lr_l=$(head -n 1 "$1")
+  case "$lr_l" in "$LPFX"*) ;; *) return 0 ;; esac
+  lr_t="$ROOT/$LPATH"
+  lr_n="$lr_t.new"
+  if [ -f "$lr_t" ]; then cp -p "$lr_t" "$lr_n" || return 1; else : > "$lr_n" && chmod 600 "$lr_n" || return 1; fi
+  if awk -v p="$LPFX" -v f="$1" 'BEGIN { getline l < f; close(f) }
+      index($0, p) == 1 { if (!d) print l; d = 1; next } { print }
+      END { if (!d) print l }' "$lr_t" 2> /dev/null > "$lr_n"; then
+    mv "$lr_n" "$lr_t" || { rm -f "$lr_n"; return 1; }
+  else
+    rm -f "$lr_n"
+    return 1
+  fi
+}
+
 cmd_export() {
   [ $# -ge 2 ] || die "usage: export <dir> <id>..."
   dir=$1
@@ -154,6 +192,10 @@ cmd_export() {
     done) >> "$TMP/list"
   done
   mkdir -p "$ROOT/tmp" || die "cannot create $ROOT/tmp"
+  for id in "$@"; do
+    line_spec "$id" && line_stage "$id" && LINESTAGED=1
+    [ -f "$ROOT/tmp/ludbox-line-$id" ] && echo "tmp/ludbox-line-$id" >> "$TMP/list"
+  done
   host=$(host_name)
   host=${host:-unit}
   stamp=$(date +%Y%m%d-%H%M)
@@ -326,6 +368,15 @@ cmd_import() {
     sort -u "$TMP/sel" | prune_covered > "$TMP/sel.p"
     gzip -dc "$arc" 2> /dev/null | tar -xf - -C "${ROOT:-/}" -T "$TMP/sel.p" || die "tar failed"
   fi
+  # line= items: the member is one staged line, merged into the target file, never extracted over it.
+  # An archive without the member (or with a line that lacks the prefix) leaves the file untouched.
+  for id in "$@"; do
+    line_spec "$id" || continue
+    grep -qx "tmp/ludbox-line-$id" "$TMP/members" || continue
+    gzip -dc "$arc" 2> /dev/null | tar -xf - -C "$TMP" "tmp/ludbox-line-$id" || die "tar failed"
+    line_restore "$TMP/tmp/ludbox-line-$id" || die "cannot write $LPATH"
+    [ "$(getkey "$ITEMDIR/$id.item" reboot)" = yes ] && reboot=yes
+  done
   for id in "$@"; do echo "imported $id"; done
   echo "done reboot=$reboot"
 }
