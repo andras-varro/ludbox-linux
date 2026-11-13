@@ -131,7 +131,11 @@ bus() { DBUS_SYSTEM_BUS_ADDRESS=$BUS dbus-send --system --print-reply --dest=org
 prop() { bus "$1" org.freedesktop.DBus.Properties.Get "string:$2" "string:$3"; }
 
 # The identity of the current hci0 instance: its sysfs inode, new for each re-add.
-hci_tok() { ls -dLi "/sys/class/bluetooth/$HCI" 2>/dev/null | awk '{print $1}'; }
+# shellcheck disable=SC2046  # word splitting drops ls's leading blanks
+hci_tok() { set -- $(ls -dLi "/sys/class/bluetooth/$HCI" 2>/dev/null); echo "$1"; }
+
+# True while any BlueZ media transport is streaming ("active" appears only as MediaTransport1's State).
+streaming() { bus / org.freedesktop.DBus.ObjectManager.GetManagedObjects | grep -q 'string "active"'; }
 
 # One pass over the bonded devices for adapter instance $1: wait for it to be powered, then connect.
 reconnect_all() {
@@ -146,6 +150,10 @@ reconnect_all() {
   for wait in $ROUNDS; do
     sleep "$wait"
     [ "$(hci_tok)" = "$1" ] || return   # a newer adapter instance: the watcher starts over for it
+    # A Connect to an absent device holds the controller for seconds (measured on .188: one
+    # A2DP write blocked 7.8 s), so no round is made while a transport is streaming.
+    n=0
+    while streaming && [ "$n" -lt 20 ]; do n=$((n + 1)); sleep 30; done
     left=0
     for d in $(candidates "$addr"); do
       p="/org/bluez/$HCI/dev_$(echo "$d" | tr : _)"
@@ -172,7 +180,7 @@ watch() {
       log "reconnect: $HCI appeared (inode $tok)"
       reconnect_all "$tok"
     fi
-    sleep 3
+    sleep 10
   done
 }
 
