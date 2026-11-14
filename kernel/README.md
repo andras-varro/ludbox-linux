@@ -21,10 +21,10 @@ directory are in [`CLAUDE.md`](CLAUDE.md).
 ## Building an image
 
 ```bash
-wsl.exe -e bash -lc "cd /mnt/c/work/roomwizard && kernel/build-image.sh --out /mnt/c/work/rw-scratch/img"
+wsl.exe -e bash -lc "cd /mnt/c/work/roomwizard && kernel/build-image.sh --out <scratch>/img"
 ```
 
-The script extracts a fresh tree from `usb_host/linux-4.14.52.tar.xz` into WSL `$HOME` and applies
+`<scratch>` is any directory outside the repo. The script extracts a fresh tree from `usb_host/linux-4.14.52.tar.xz` into WSL `$HOME` and applies
 `patches/`. It configures from the device's own `usb_host/device_config` with `olddefconfig`, then
 writes `dropped-symbols.txt`. It builds `zImage` (about 1.5 min fresh; `--reuse` is incremental) and
 appends a DTB, then wraps the result:
@@ -156,7 +156,7 @@ that exist only in the vendor image, are what it patched; each is disassembled f
 `Image` with its `bl` targets and literal-pool strings resolved. That found the Ethernet reset pulse and the
 whole panel driver: timings, GPIO order, delays, and the signal polarity sysfs never exposed.
 
-The tools are scratch-grade and live outside the repo, in `C:\work\rw-scratch`: `fsize.py` for sizes,
+The tools are scratch-grade and are not part of the repo; they live in `<scratch>`: `fsize.py` for sizes,
 `calls.py <fn> <vendor_size> <our_size>` for the call-sequence diff, `dis.sh`, and `sharp_dis.py`. Their
 data files are `vendor-Image` and `vendor.kallsyms`. `led_pwm_probe` is read: the vendor adds a u32 `brightness`
 DT property and applies it at probe, which vanilla hard-codes to `LED_OFF`. Still unexamined: `fb_find_logo`.
@@ -199,7 +199,7 @@ The device has no `i2cget`/`i2cdump` (measured 2026-09-21), hence the tool. ⚠�
 bit**: `chmod +x` on the device, or the run dies with *Permission denied* into a redirect and reads as an
 empty result. ⚠️ **Stop whatever owns the screen before an `--evdev` witness**: `app_launcher` may hold an
 `EVIOCGRAB` on the touch node, and a grabbed device silences the witness exactly like a finger that never landed.
-Building the drivers, after `build-image.sh`: `wsl.exe -e bash -lc "cd /mnt/c/work/roomwizard && kernel/build-modules.sh --out /mnt/c/work/rw-scratch/ko [--deploy <ip>]"`.
+Building the drivers, after `build-image.sh`: `wsl.exe -e bash -lc "cd /mnt/c/work/roomwizard && kernel/build-modules.sh --out <scratch>/ko [--deploy <ip>]"`.
 
 ⚠️ **Any change to an image patch means rebuilding both module sets.** `MODVERSIONS=y`, and the TCP patches change
 `struct netns_ipv4`, so exported CRCs move: the touch `.ko` and the Bluetooth set refused to load (`disagrees about

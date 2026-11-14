@@ -8,10 +8,10 @@
  * TouchInput.mt_clock so 0.9 s and 1.0 s are exact. touch_init() is called
  * once, on /dev/null, to check it clears that state (group N).
  *
- *   cd native_apps && mkdir -p /mnt/c/work/rw-scratch/f147mt && gcc -Wall -Wextra \
- *     -Wno-unused-parameter -I common -o /mnt/c/work/rw-scratch/f147mt/touch_multi_test \
+ *   cd native_apps && mkdir -p $ARCA_SCRATCH/f147mt && gcc -Wall -Wextra \
+ *     -Wno-unused-parameter -I common -o $ARCA_SCRATCH/f147mt/touch_multi_test \
  *     tests/touch_multi_test.c common/touch_input.c common/framebuffer.c common/font.c \
- *     common/hardware.c common/config.c -lm && /mnt/c/work/rw-scratch/f147mt/touch_multi_test
+ *     common/hardware.c common/config.c -lm && $ARCA_SCRATCH/f147mt/touch_multi_test
  */
 #include "touch_input.h"
 #include <stdio.h>

@@ -5,7 +5,7 @@
 # report >= 1 failure, and the unmodified copy 0.
 set -u
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-W="${AUDIO_ENH_SCRATCH:-/mnt/c/work/rw-scratch/enh2_sab}"
+W="${AUDIO_ENH_SCRATCH:-${ARCA_SCRATCH:-$HOME/arca-scratch}/enh2_sab}"
 rm -rf "$W"; mkdir -p "$W"
 cp "$HERE/common/audio_enh.h" "$HERE/common/audio_enh.c" "$HERE/tests/audio_enh_test.c" "$W/"
 

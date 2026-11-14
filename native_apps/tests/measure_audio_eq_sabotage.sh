@@ -6,7 +6,7 @@
 # unmodified copy 0.
 set -u
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-W="${AUDIO_EQ_SCRATCH:-/mnt/c/work/rw-scratch/jfe_sab}"
+W="${AUDIO_EQ_SCRATCH:-${ARCA_SCRATCH:-$HOME/arca-scratch}/jfe_sab}"
 rm -rf "$W"; mkdir -p "$W"
 cp "$HERE/common/audio_eq.h" "$HERE/common/audio_eq.c" "$HERE/tests/audio_eq_test.c" "$W/"
 

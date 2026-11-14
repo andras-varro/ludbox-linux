@@ -22,7 +22,8 @@
 
 set -u
 
-ROOT="/mnt/c/work/rw-scratch/c6"
+SCRATCH=${ARCA_SCRATCH:-$HOME/arca-scratch}
+ROOT="$SCRATCH/c6"
 BASE="$ROOT/fixed"                     # the FIXED ppm.c, this sweep's pristine copy
 W="$ROOT/build/sabotage"
 CASE_GROUPS=(A B C D E F G H I)

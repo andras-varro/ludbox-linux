@@ -512,7 +512,7 @@ else
 fi
 echo
 echo "Next, on Windows: copy the image out of WSL, e.g."
-printf '  copy \\\\wsl$\\<distro>%s C:\\work\\rw-scratch\\card.img\n' "$OUTABS"
+printf '  copy \\\\wsl$\\<distro>%s <dest>\\card.img\n' "$OUTABS"
 echo "(outside the repo), write it with Rufus, balenaEtcher or Win32 Disk Imager to a"
 echo "card of 2 GB or more, then put it in the unit. The image holds no key and root has no"
 echo "password: SSH is opened from the unit's Control Panel, SSH page (README.md, 'Reaching the unit over SSH')."

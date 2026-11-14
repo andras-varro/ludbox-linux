@@ -3,7 +3,7 @@
  * deliver exactly what a plain pl_mpeg decode of the same file delivers, whatever
  * the byte-arrival pattern, and must stop promptly.
  *
- * Clip: argv[1] or /mnt/c/work/rw-scratch/vid_test.mpg (made with ffmpeg, see the
+ * Clip: argv[1] or $ARCA_SCRATCH/vid_test.mpg (made with ffmpeg, see the
  * SKIP message).  The reference is pl_mpeg itself (plm_create_with_filename), so
  * this proves the threaded path adds, drops, reorders and mis-stamps nothing; it
  * cannot prove pl_mpeg decodes correctly.
@@ -28,6 +28,13 @@
 #include <unistd.h>
 
 static int g_fail;
+
+/* Scratch directory for clips and temp files: $ARCA_SCRATCH, else /tmp. */
+static const char *scratch_dir(void)
+{
+    const char *d = getenv("ARCA_SCRATCH");
+    return (d && *d) ? d : "/tmp";
+}
 #define CHECK(c, ...) do { if (!(c)) { g_fail++; printf("  FAIL %s:%d: ", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\n"); } } while (0)
 
 static double now_s(void)
@@ -199,7 +206,8 @@ static void run_case(const char *name, const Ref *r, int nch, size_t len, int us
     printf("case: %s (nch %d, %zu bytes, %s)\n", name, nch, len, use_file ? "file" : "pipe");
     int fd, pfd[2] = { -1, -1 };
     Writer w; memset(&w, 0, sizeof w);
-    const char *tmp = "/mnt/c/work/rw-scratch/vid_dec_tmp.bin";
+    char tmp[512];
+    snprintf(tmp, sizeof tmp, "%s/vid_dec_tmp.bin", scratch_dir());
     if (use_file) {
         FILE *f = fopen(tmp, "wb");
         if (!f) { CHECK(0, "cannot create %s", tmp); return; }
@@ -291,7 +299,9 @@ static void stop_case(const char *name, const Ref *r, int mode)
 
 int main(int argc, char **argv)
 {
-    const char *path = argc > 1 ? argv[1] : "/mnt/c/work/rw-scratch/vid_test.mpg";
+    char clip[512];
+    snprintf(clip, sizeof clip, "%s/vid_test.mpg", scratch_dir());
+    const char *path = argc > 1 ? argv[1] : clip;
     signal(SIGPIPE, SIG_IGN);
     if (access(path, R_OK)) {
         printf("SKIP: clip not found (generate with ffmpeg -y -f lavfi -i testsrc=size=400x216:rate=24000/1001 "

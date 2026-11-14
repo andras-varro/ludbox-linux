@@ -17,12 +17,13 @@
 # different segment — shows up as MISMATCH instead of passing for the wrong
 # reason.  Read the output; do not just count it.
 #
-#   wsl.exe -e bash -lc /mnt/c/work/rw-scratch/c6/measure_touch_map_sabotage.sh
+#   wsl.exe -e bash -lc "$ARCA_SCRATCH/c6/measure_touch_map_sabotage.sh"
 set -u
 
 REPO=/mnt/c/work/arca/native_apps
-TEST=/mnt/c/work/rw-scratch/c6/touch_map_test.c
-WORK=/mnt/c/work/rw-scratch/c6/sab
+SCRATCH=${ARCA_SCRATCH:-$HOME/arca-scratch}
+TEST=$SCRATCH/c6/touch_map_test.c
+WORK=$SCRATCH/c6/sab
 
 cd "$REPO" || exit 1
 rm -rf "$WORK"

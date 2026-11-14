@@ -26,7 +26,7 @@
 set -u
 
 REPO=/mnt/c/work/arca
-TEST=${ARCA_CONFIG_TEST:-/mnt/c/work/rw-scratch/c6/config_test.c}
+TEST=${ARCA_CONFIG_TEST:-${ARCA_SCRATCH:-$HOME/arca-scratch}/c6/config_test.c}
 W=$(mktemp -d /tmp/cfgsab.XXXXXX)
 trap 'rm -rf "$W"' EXIT
 
