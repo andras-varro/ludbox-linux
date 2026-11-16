@@ -26,7 +26,7 @@ Open work goes in `IMPROVEMENT_PLAN.md`. Neither is restated here.
 - **Reading the vendor binary beats guessing.** The vendor kernel's `/proc/kallsyms` against our
   `System.map`, compared per-function by size, names every function the vendor patched. The method is
   in [`README.md`](README.md#reading-the-vendor-kernel).
-- **The initramfs trampoline is `initramfs/init`**: a busybox script that `switch_root`s into p3 on `arca_root=1`. `build-image.sh` generates the list; busybox and glibc come from the Buildroot target tree, so commit no binary there.
+- **The initramfs trampoline is `initramfs/init`**: a busybox script that `switch_root`s into p3 unless the cmdline has `arca_root=0`. `build-image.sh` generates the list; busybox and glibc come from the Buildroot target tree, so commit no binary there.
 - `tools/` holds **userspace** probes built for the device (`-static`, no idiv). They are not kernel
   code, so `native_apps/check-arm-safe.sh` applies to them too. `drivers/<name>/` holds out-of-tree
   modules, built by `build-modules.sh` against our image's tree and loadable only on our image.

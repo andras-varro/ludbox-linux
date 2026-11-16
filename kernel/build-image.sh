@@ -166,7 +166,7 @@ for p in "${PATCHES[@]}"; do
 done
 
 echo; echo "[4/7] Configuring from kernel/config-${KERNEL_VERSION} + olddefconfig..."
-# The initramfs: kernel/initramfs/init is the trampoline (it switch_roots into p3 on arca_root=1);
+# The initramfs: kernel/initramfs/init is the trampoline (it switch_roots into p3 unless the cmdline has arca_root=0);
 # busybox (stripped) and the glibc runtime come from the Buildroot target tree, so no binary is in
 # the repo. The list is generated here, with paths into the work dir, and handed to the kernel
 # through CONFIG_INITRAMFS_SOURCE (config-7.3.4 keeps it empty).

@@ -44,9 +44,9 @@ A full build was not run by this repo's gate; the patch set applying in order to
 - **Timestamps and identity are pinned** (`SOURCE_DATE_EPOCH` = last commit), so equal inputs give an equal `uImage`.
 - **Boot recipe tested** [measured on `.188`]: the U-Boot appends no bootargs; the test cmdline was
   `console=ttyO1,115200n8 vram=12M consoleblank=0 clocksource=32k_counter ignore_loglevel`, set from the serial U-Boot
-  prompt (`fatload` the `uImage-test*` file, `setenv bootargs`, `bootm`), plus ` arca_root=1 ` for the rootfs hand-off.
+  prompt (`fatload` the `uImage-test*` file, `setenv bootargs`, `bootm`), and the card's U-Boot passes no `arca_root`.
   **The image carries an initramfs** (`kernel/initramfs/init`, a busybox trampoline): it waits for `mmcblk0p3`, mounts it rw,
-  and `switch_root`s into `/sbin/init` when the cmdline has `arca_root=1`, otherwise it logs to p1 and leaves a serial shell.
+  and `switch_root`s into `/sbin/init` unless the cmdline has `arca_root=0` (then it logs to p1 and leaves a serial shell); a failed hand-off also leaves the shell.
   `build-image.sh` generates the list in `<work>/initramfs/` and sets `CONFIG_INITRAMFS_SOURCE` to it (the config keeps it empty);
   busybox (stripped) and the glibc runtime are copied from the Buildroot target tree (`--initrd-root`, default `~/br-rw/target`),
   so no binary is committed. ⚠️ **Never put `root=/dev/mmcblk0p3` on the cmdline**: `growroot` would resize p3.

@@ -66,11 +66,12 @@ fi
 led red 100
 say "k73-boot.log written (p1=$P1)"
 
-# --- optional switch to the real root (only with arca_root=1 on the cmdline) ---
+# --- switch to the real root unless the cmdline has arca_root=0 (the card's U-Boot passes no arca_root) ---
 case " $(cat /proc/cmdline) " in
-*" arca_root=1 "*)
+*" arca_root=0 "*) ;;
+*)
   echo 100 > /sys/class/leds/backlight/brightness 2>/dev/null
-  lg ""; lg "=== arca_root=1: trying real root /dev/mmcblk0p3"
+  lg ""; lg "=== switching to real root: trying real root /dev/mmcblk0p3"
   k=0
   while [ ! -b /dev/mmcblk0p3 ] && [ $k -lt 20 ]; do sleep 1; k=$((k+1)); done
   mkdir -p /newroot
