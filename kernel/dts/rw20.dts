@@ -336,7 +336,7 @@
 	};
 };
 
-/* The LCD transmitter and the backlight switch are on from the moment gpio1 probes. */
+/* The LCD transmitter, the backlight switch and the speaker amplifier are on from the moment gpio1 probes. */
 &gpio1 {
 	lcd-lvds-hog {
 		gpio-hog;
@@ -350,6 +350,13 @@
 		gpios = <19 GPIO_ACTIVE_HIGH>;
 		output-high;
 		line-name = "lcd-backlight";
+	};
+
+	spk-amp-hog {
+		gpio-hog;
+		gpios = <12 GPIO_ACTIVE_HIGH>;
+		output-high;
+		line-name = "spk-amp";
 	};
 };
 
