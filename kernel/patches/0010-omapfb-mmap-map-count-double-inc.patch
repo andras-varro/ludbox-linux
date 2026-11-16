@@ -1,0 +1,19 @@
+--- a/drivers/video/fbdev/omap2/omapfb/omapfb-main.c	2026-11-15 12:29:50.471453121 -0500
++++ b/drivers/video/fbdev/omap2/omapfb/omapfb-main.c	2026-11-15 12:29:57.232143735 -0500
+@@ -1113,8 +1113,6 @@
+ 	vma->vm_ops = &mmap_user_ops;
+ 	vma->vm_private_data = rg;
+ 
+-	atomic_inc(&rg->map_count);
+-
+ 	r = vm_iomap_memory(vma, start, len);
+ 	if (r)
+ 		goto error;
+@@ -1127,7 +1125,6 @@
+ 	return 0;
+ 
+ error:
+-	atomic_dec(&rg->map_count);
+ 	omapfb_put_mem_region(rg);
+ 
+ 	return r;

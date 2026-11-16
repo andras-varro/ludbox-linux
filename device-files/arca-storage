@@ -21,7 +21,7 @@
 # partitions (a superfloppy stick). The unit fits no SATA or SCSI disk, so every sd* node is a
 # USB stick and no further filter is applied.
 #
-# Filesystems: vfat only. The 4.14 kernel this image runs has no exFAT, and NTFS and ext are not
+# Filesystems: vfat only. kernel/config-7.3.4 sets no exFAT and no NTFS (EXFAT_FS, NTFS_FS, NTFS3_FS all off), and ext is not
 # offered, so a stick formatted with them is reported UNSUPPORTED instead of being mounted. The
 # type is read from the boot sector, not from blkid: the busybox blkid on this image prints no
 # TYPE even for the FAT boot partition. FAT12/16 carry "FAT1" at byte 54, FAT32 carries "FAT32"

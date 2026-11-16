@@ -1,6 +1,12 @@
---- a/drivers/video/fbdev/omap2/omapfb/dss/dispc_coefs.c
-+++ b/drivers/video/fbdev/omap2/omapfb/dss/dispc_coefs.c
-@@ -18,6 +18,7 @@
+omapdss: add scale_mode module parameter selecting the upscale filter tables.
+0 = stock, 1 = sharp (pixel repeat), 2 = soft-sharp (pixel repeat with a short
+blend at the pixel edge). Read at overlay setup; only upscaling (inc < 1024) is
+affected. Runtime: /sys/module/omapdss/parameters/scale_mode, boot:
+omapdss.scale_mode=.
+
+--- a/drivers/video/fbdev/omap2/omapfb/dss/dispc_coefs.c	2026-11-15 11:37:05.044914452 -0500
++++ b/drivers/video/fbdev/omap2/omapfb/dss/dispc_coefs.c	2026-11-15 11:37:05.044914452 -0500
+@@ -7,6 +7,7 @@
   */
  
  #include <linux/kernel.h>
@@ -8,7 +14,7 @@
  #include <video/omapfb_dss.h>
  
  #include "dispc.h"
-@@ -286,9 +287,67 @@
+@@ -275,9 +276,67 @@
  	{   5,  29,  48,  36,  10 },
  };
  
@@ -76,7 +82,7 @@
  	static const struct {
  		int Mmin;
  		int Mmax;
-@@ -317,6 +376,13 @@
+@@ -306,6 +365,13 @@
  		{  0,  1, coef3_M19, coef5_M19 },
  	};
  

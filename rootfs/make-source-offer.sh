@@ -215,15 +215,15 @@ rm -rf "$STAGE/buildroot/legal-info/host-sources" "$STAGE/buildroot/legal-info/h
 for d in "$STAGE"/buildroot/legal-info/sources/linux-headers-*; do
     [ -d "$d" ] || continue
     rm -rf "$d"; mkdir -p "$d"
-    echo "see ../../../../kernel/linux-4.14.52.tar.xz" >"$d/POINTER.txt"
+    echo "see ../../../../kernel/linux-7.3.4.tar.xz" >"$d/POINTER.txt"
 done
 echo "Buildroot's own packages: sources/ and licenses/ here, listed in manifest.csv. The host tools Buildroot compiled to build the image (compilers, make, python) are not part of the image and are not offered." \
     >"$STAGE/buildroot/legal-info/NOT-INCLUDED.txt"
 
 info "kernel"
-add "linux" "4.14.52" "GPL-2.0-only" "uImage-system, uImage-fallback, every .ko" "kernel/linux-4.14.52.tar.xz" \
-    "https://cdn.kernel.org/pub/linux/kernel/v4.x/linux-4.14.52.tar.xz" "$REPO/usb_host/linux-4.14.52.tar.xz" \
-    "grep:rootfs/package-hashes/linux-headers.hash:linux-4.14.52.tar.xz"
+add "linux" "7.3.4" "GPL-2.0-only" "uImage-system, uImage-fallback, every .ko" "kernel/linux-7.3.4.tar.xz" \
+    "https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.3.4.tar.xz" "${ARCA_KERNEL_TARBALL:-$HOME/rw-kbuild-73/linux-7.3.4.tar.xz}" \
+    "grep:rootfs/package-hashes/linux-headers.hash:linux-7.3.4.tar.xz"
 
 info "U-Boot $UBOOT_TAG"
 git -C "$UBOOT_SRC" archive --format=tar --prefix="u-boot-${UBOOT_TAG}/" "refs/tags/${UBOOT_TAG}" | xz -T0 -6 >"$STAGE/uboot/u-boot-${UBOOT_TAG}.tar.xz"
@@ -370,9 +370,9 @@ Finding the source of a program on the card
                packages it compiled (glibc, busybox, bash, util-linux, alsa, ...), with
                their source archives in sources/ and licence texts in licenses/.
                buildroot/packages-file-list.txt says which package installed which file.
- kernel/       Linux 4.14.52 as released. Our patches, device tree, driver sources and
+ kernel/       Linux 7.3.4 as released. Our patches, device tree, driver sources and
                configuration are in repo/ (kernel/patches, kernel/dts, kernel/drivers,
-               kernel/config-changes and usb_host/device_config); the kernel build script
+               kernel/config-7.3.4 and usb_host/device_config); the kernel build script
                kernel/build-image.sh applies them and produces uImage-system and the .ko files.
  uboot/        U-Boot, the tagged commit; our patch is uboot/rw20-board.patch in repo/.
  scummvm/      ScummVM at the pinned commit; our backend and configure.patch are in repo/

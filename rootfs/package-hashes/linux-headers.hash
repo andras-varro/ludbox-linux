@@ -1,4 +1,4 @@
-# The kernel headers are the 4.14.52 tree, not the 6.x tree the stock hash file describes.
-# Licence file hash: COPYING of linux-4.14.52. Source hash: kernel.org sha256sums.asc.
-sha256  a5d226c7b2fd1eb0f01d56e4e2c6a0100784b68df907cc7317f32bde34f88810  linux-4.14.52.tar.xz
-sha256  af8067302947c01fd9eee72befa54c7e3ef8a48fecde7fd71277f2290b2bf0f7  COPYING
+# The kernel headers are the 7.3.4 tree (the image kernel); the stock hash file describes Buildroot's own 6.x versions.
+# Licence file hash: COPYING of linux-7.3.4. Source hash: kernel.org sha256sums.asc, v7.x. The same tarball is the image kernel source (kernel/build-image.sh).
+sha256  b11b6df8295e8e991ff040b71aaa4994a8b55caa23b6b092907f195b5840fd1f  linux-7.3.4.tar.xz
+sha256  fb5a425bd3b3cd6071a3a9aff9909a859e7c1158d54d32e07658398cd67eb6a0  COPYING

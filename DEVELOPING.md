@@ -25,7 +25,7 @@ SYSTEM_ANALYSIS.md, open work belongs in IMPROVEMENT_PLAN.md. Link, don't copy.
 ### The device in one line
 
 TI **OMAP3503** (ARM Cortex-A8 @ 600 MHz, **no GPU, no DSP**), 234 MB RAM, 800×480 LCD via
-legacy `omapfb`/`omapdss` (no DRM/KMS), projected-capacitive touch, Linux 4.14.52, SysVinit.
+legacy `omapfb`/`omapdss` (no DRM/KMS), projected-capacitive touch, vendor Linux 4.14.52 (our image: 7.3.4), SysVinit.
 All code is cross-compiled on the dev host and deployed over SSH — there is no local app to run.
 
 ### Projects
@@ -108,11 +108,11 @@ A card is one whole-card image built by `rootfs/make-card-image.sh` (root, WSL):
 `rootfs/commission-offline.sh`. The unit works at first boot and never needs to be reachable.
 
 ```bash
-sudo ./rootfs/make-card-image.sh --mlo <MLO> --uboot <u-boot.img> --kernel <uImage> [--bundle <tar.gz|dir> | --no-bundle] <rootfs.tar> <out.img>
+sudo ./rootfs/make-card-image.sh --mlo <MLO> --uboot <u-boot.img> --kernel <uImage> (--modules-tree <dir> | --no-modules) [--bundle <tar.gz|dir> | --no-bundle] <rootfs.tar> <out.img>
 ```
 
 `MLO` and `u-boot.img` come from `uboot/build.sh`, `<uImage>` from `kernel/build-image.sh`, the kernel modules from
-`kernel/build-modules.sh --out <dir>` (`--modules`; `--help` has the default), `<rootfs.tar>` from `rootfs/build-rootfs.sh`. The partition table is
+`kernel/build-modules.sh --out <dir>` (`--modules`; `--help` has the default), the in-tree module tree (`<out>/modules` of `kernel/build-image.sh`, `--modules-tree`; required unless `--no-modules`), `<rootfs.tar>` from `rootfs/build-rootfs.sh`. The partition table is
 generated at fixed positions, so no donor card and no vendor file is an input; write the finished image to the card from Windows. Make a bundle with
 `./release.sh --stage-only`, or publish one with `./release.sh --tag <tag> --source-offer`. A larger card needs nothing extra: `S07growroot`
 grows p3 to the end of the card at the first boot.
@@ -188,7 +188,7 @@ arca-linux/
 ├── device-files/                # Installed onto the device verbatim
 │   ├── arca-app                 # App respawn loop; arcamond = init for the history daemon
 │   ├── enable-usb-host.sh       # The /dev/mem MUSB host-mode patch; usb-host runs it (S90)
-│   ├── xpad-modules             # insmod -f the controller modules (S89); usb-storage-modules (S88): sticks
+│   ├── xpad-modules             # modprobe the controller modules (S89); usb-storage-modules (S88): sticks
 │   └── provision-rules.conf     # What the device ends up with
 ├── LICENSE.md                   # MIT, plus the third-party enumeration
 ├── SYSTEM_ANALYSIS.md           # Hardware analysis
@@ -247,9 +247,9 @@ For hardware specs, see **[Subsystems](SYSTEM_ANALYSIS.md#3-subsystems)** in the
 See **[IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md)** for the current backlog. Highlights:
 
 - Known bugs are catalogued there with `file:line` references.
-- **We build our own 4.14.52 image; a mainline port stays out of scope** — built from the vanilla tree
-  as it stands the image has no built-in touch driver (it ships as a loadable `.ko`; `kernel/README.md`), and a mainline port would additionally break the
-  runtime bpp switching ScummVM and the VNC client depend on. See [Kernel policy](SYSTEM_ANALYSIS.md#7-kernel-policy).
+- **We build our own mainline Linux 7.3.4 image** (`kernel/build-image.sh`); the vendor kernel is 4.14.52. It keeps `omapfb`, so the runtime
+  bpp switching ScummVM and the VNC client depend on is unaffected, and touch ships as a loadable `.ko` (`kernel/README.md`).
+  See [Kernel policy](SYSTEM_ANALYSIS.md#7-kernel-policy).
 
 ## A note on secrets
 

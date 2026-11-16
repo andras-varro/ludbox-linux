@@ -1,5 +1,5 @@
 #!/bin/bash
-# build-and-deploy.sh — Bluetooth for Arca: kernel modules, RTL8761CU firmware,
+# build-and-deploy.sh — Bluetooth for Arca: RTL8761CU firmware,
 # bluetoothd + bluetoothctl, and the boot start.
 #
 # Usage:
@@ -10,8 +10,7 @@
 # Prerequisites — the host ones come from ../setup-build-env.sh:
 #   - arm-linux-gnueabi-gcc, dpkg-deb, wget, pkg-config   (BlueZ, build-bluez.sh)
 #   - autoreconf, libtoolize, gdbus-codegen               (BlueALSA, build-bluealsa.sh)
-#   - arm-linux-gnueabihf-gcc and ~/rw-kbuild-image from ../kernel/build-image.sh
-#                                                         (modules, build-bt-modules.sh)
+#   - arm-linux-gnueabihf-gcc                             (check-arm-safe.sh)
 #   - SSH key auth to root@<ip>                           (deploy only)
 #
 # ── What goes where ─────────────────────────────────────────────────────────
@@ -19,8 +18,7 @@
 #   built artifacts (this script, and the bundle):
 #     BlueZ 5.66 bluetoothd, bluetoothctl, btmon, libbluetooth ← build-bluez.sh, staging/
 #     BlueALSA 4.3.1 bluealsa, bluealsa-aplay, 2 plugins  ← build-bluealsa.sh, staging-bluealsa/
-#     the Bluetooth module closure + load-order.txt       ← ../kernel/build-bt-modules.sh,
-#                                                           modules/, to /lib/modules/4.14.52/bt
+#     (the Bluetooth kernel modules are in-tree in the 7.3.4 image: no module build here)
 #     rtl8761cu_{fw,config}.bin + their licence           ← ../kernel/3rdparty/realtek/bluetooth
 #   verbatim device files (device-files/provision-rules.conf, group `bluetooth`):
 #     /etc/init.d/bluetooth (bluetoothd, then bluealsa), its S91 rc5.d link, the dbus
@@ -41,8 +39,6 @@ _START_SECONDS=$(date +%s)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-KERNEL_VERSION="4.14.52"
-MODULES_DIR="$SCRIPT_DIR/modules"
 STAGING="$SCRIPT_DIR/staging"
 FW_DIR="$REPO_ROOT/kernel/3rdparty/realtek/bluetooth"
 
@@ -110,7 +106,7 @@ ts "Started — $(date '+%Y-%m-%d %H:%M:%S')"
 echo ""
 
 # ── 0. SSH, before any build ────────────────────────────────────────────────
-ts "[0/6] Prerequisites"
+ts "[0/5] Prerequisites"
 if [[ -n "$DEVICE_IP" ]]; then
     arca_ssh_gate "$DEVICE" || err "Cannot continue without SSH to $DEVICE"
     ok "SSH to $DEVICE"
@@ -121,7 +117,7 @@ echo ""
 
 # ── 1. BlueZ userspace ──────────────────────────────────────────────────────
 # build-bluez.sh short-circuits on its own artifacts; --force when the recipe is newer.
-ts "[1/6] BlueZ userspace"
+ts "[1/5] BlueZ userspace"
 if [[ -f "$STAGING/usr/libexec/bluetooth/bluetoothd" \
       && "$SCRIPT_DIR/build-bluez.sh" -nt "$STAGING/usr/libexec/bluetooth/bluetoothd" ]]; then
     info "build-bluez.sh is newer than the staged build — rebuilding"
@@ -148,40 +144,6 @@ done
 ok "staging-bluealsa/ (its .conf files match device-files/)"
 echo ""
 
-# ── 2. kernel modules ───────────────────────────────────────────────────────
-# load-order.txt is build-bt-modules.sh's output and the one list of modules: the
-# artifact rows below and the init script's insmod order both come from it.
-ts "[2/6] Kernel modules (kernel/build-bt-modules.sh)"
-ORDER="$MODULES_DIR/load-order.txt"
-need_mod_build=0
-if [[ ! -f "$ORDER" ]]; then
-    need_mod_build=1
-else
-    while read -r ko; do
-        [[ -z "$ko" || -f "$MODULES_DIR/$ko" ]] || need_mod_build=1
-    done < "$ORDER"
-    if [[ -n "$(find "$REPO_ROOT/kernel/build-bt-modules.sh" "$REPO_ROOT/kernel/patches-modules" \
-                -newer "$ORDER" -print -quit 2>/dev/null)" ]]; then
-        info "the module recipe or a module patch is newer than modules/ — rebuilding"
-        need_mod_build=1
-    fi
-fi
-if [[ $need_mod_build -eq 1 ]]; then
-    [[ -f "$HOME/rw-kbuild-image/linux-4.14.52/vmlinux" ]] \
-        || err "$HOME/rw-kbuild-image is not built, and the Bluetooth modules are built against it.
-     Run kernel/build-image.sh first (in WSL), then re-run this."
-    REUSE=()
-    [[ -f "$HOME/rw-kbuild-bt/linux-4.14.52/Makefile" ]] && REUSE=(--reuse)
-    bash "$REPO_ROOT/kernel/build-bt-modules.sh" --out "$MODULES_DIR" "${REUSE[@]}"
-fi
-mapfile -t BT_MODULES < <(grep -v '^$' "$ORDER")
-[[ ${#BT_MODULES[@]} -gt 0 ]] || err "$ORDER lists no modules"
-for ko in "${BT_MODULES[@]}"; do
-    [[ -f "$MODULES_DIR/$ko" ]] || err "module $ko not in $MODULES_DIR"
-done
-ok "${#BT_MODULES[@]} modules"
-echo ""
-
 # ── the artifacts, declared ONCE ────────────────────────────────────────────
 # "<mode>|<local path>|<device path>". The bundle and the scp deploy both read this.
 # Modes are DECLARED, never read off disk: /mnt/c reports every file 0777.
@@ -194,11 +156,6 @@ BT_ARTIFACTS=(
     "0755|$LIB_REAL|/usr/lib/libbluetooth.so.3"
 )
 ARM_TARGETS=("$STAGING/usr/libexec/bluetooth/bluetoothd" "$STAGING/usr/bin/bluetoothctl" "$STAGING/usr/bin/btmon" "$LIB_REAL")
-for ko in "${BT_MODULES[@]}"; do
-    BT_ARTIFACTS+=("0644|$MODULES_DIR/$ko|/lib/modules/$KERNEL_VERSION/bt/$ko")
-    ARM_TARGETS+=("$MODULES_DIR/$ko")
-done
-BT_ARTIFACTS+=("0644|$ORDER|/lib/modules/$KERNEL_VERSION/bt/load-order.txt")
 # BlueALSA: the daemon, bluealsa-aplay, and the two plugins in the vendor libasound's
 # compiled-in plugin directory (our alsa-lib build is never deployed).
 BA_PLUGINS="$BA_STAGING/usr/lib/alsa-lib"
@@ -215,10 +172,10 @@ for f in rtl8761cu_fw.bin rtl8761cu_config.bin LICENCE.rtlwifi_firmware.txt; do
     BT_ARTIFACTS+=("0644|$FW_DIR/$f|/lib/firmware/rtl_bt/$f")
 done
 
-# ── 3. the ARM-safety gate ──────────────────────────────────────────────────
+# ── 2. the ARM-safety gate ──────────────────────────────────────────────────
 # No hardware divide on Cortex-A8. Exit 2 ("could not judge": stripped) is a refusal,
 # as in usb_host: nothing here is stripped of its symbol table by construction.
-ts "[3/6] ARM-safety gate (no sdiv/udiv)"
+ts "[2/5] ARM-safety gate (no sdiv/udiv)"
 arm_rc=0
 bash "$REPO_ROOT/native_apps/check-arm-safe.sh" "${ARM_TARGETS[@]}" || arm_rc=$?
 case "$arm_rc" in
@@ -228,9 +185,9 @@ case "$arm_rc" in
 esac
 echo ""
 
-# ── 4. --bundle: stage and stop ─────────────────────────────────────────────
+# ── 3. --bundle: stage and stop ─────────────────────────────────────────────
 if [[ -n "$BUNDLE_DIR" ]]; then
-    ts "[4/6] Staging → $BUNDLE_DIR"
+    ts "[3/5] Staging → $BUNDLE_DIR"
     arca_bundle_init "$BUNDLE_DIR" bluetooth || err "could not prepare $BUNDLE_DIR"
     for a in "${BT_ARTIFACTS[@]}"; do
         mode="${a%%|*}"; rest="${a#*|}"; src="${rest%%|*}"; dev="${rest#*|}"
@@ -248,9 +205,9 @@ if [[ -z "$DEVICE_IP" ]]; then
     exit 0
 fi
 
-# ── 4. the `bluetooth` group of the provision plan ──────────────────────────
+# ── 3. the `bluetooth` group of the provision plan ──────────────────────────
 # The same records and the same generated executor provision.sh uses.
-ts "[4/6] Init script, boot link, dbus policies, main.conf, input.conf (provision-rules.conf, group bluetooth)"
+ts "[3/5] Init script, boot link, dbus policies, main.conf, input.conf (provision-rules.conf, group bluetooth)"
 # shellcheck source=../lib/arca-identify.sh
 . "$REPO_ROOT/lib/arca-identify.sh"
 # shellcheck source=../lib/arca-provision.sh
@@ -275,10 +232,10 @@ ssh "$DEVICE" "sh /tmp/arca-bt-provision.sh /tmp/arca-bt-plan; rc=\$?; rm -f /tm
 ok "init script, dbus policies, main.conf and input.conf installed, S91bluetooth linked"
 echo ""
 
-# ── 5. the built artifacts ──────────────────────────────────────────────────
-# The init script's stop goes first: it stops bluetoothd and unloads the modules, so
-# the new .ko files are the ones the start below loads.
-ts "[5/6] Built artifacts"
+# ── 4. the built artifacts ──────────────────────────────────────────────────
+# The init script's stop goes first: it stops bluetoothd, so
+# the new binaries are the ones the start below runs.
+ts "[4/5] Built artifacts"
 ssh "$DEVICE" "/etc/init.d/bluetooth stop" || warn "stop reported a failure"
 DIRS=()
 for a in "${BT_ARTIFACTS[@]}"; do dev="${a##*|}"; DIRS+=("${dev%/*}"); done
@@ -296,8 +253,8 @@ done
 ok "${#BT_ARTIFACTS[@]} file(s) copied"
 echo ""
 
-# ── 6. start it now, through the boot path ──────────────────────────────────
-ts "[6/6] Starting Bluetooth and verifying"
+# ── 5. start it now, through the boot path ──────────────────────────────────
+ts "[5/5] Starting Bluetooth and verifying"
 ssh "$DEVICE" "/etc/init.d/bluetooth start" || warn "start reported a failure"
 ssh "$DEVICE" "sleep 2; /etc/init.d/bluetooth status; ls -l /etc/rc5.d/S91bluetooth"
 echo ""

@@ -247,9 +247,9 @@ if [ "$rc" != 0 ] && grep -qF "not a legal-info tree" "$T/out"; then ok "F7 a le
 rc="$(ldi_run "$T/fx/nowhere" "$T/fx/legal" v1.0 "")"
 if [ "$rc" != 0 ] && grep -qF "LICENSE.md" "$T/out"; then ok "F8 a missing LICENSE.md is refused"; else bad "F8 rc $rc: $(cat "$T/out")"; fi
 # the script's own arguments, as a program (no root needed: these refusals precede the root check)
-bash "$MCI" --mlo m --uboot u --kernel k --legal-info "$T/fx/nowhere" a.tar "$T/never.img" >"$T/out" 2>&1; rc=$?
+bash "$MCI" --no-modules --mlo m --uboot u --kernel k --legal-info "$T/fx/nowhere" a.tar "$T/never.img" >"$T/out" 2>&1; rc=$?
 if [ "$rc" = 1 ] && grep -q -- '--legal-info .* has no manifest.csv' "$T/out" && [ ! -e "$T/never.img" ]; then ok "F9 an explicit --legal-info that is not a legal-info tree is refused"; else bad "F9 rc $rc: $(cat "$T/out")"; fi
-bash "$MCI" --mlo m --uboot u --kernel k --legal-info "$T/fx/legal" --source-tag 'a/b' a.tar "$T/never.img" >"$T/out" 2>&1; rc=$?
+bash "$MCI" --no-modules --mlo m --uboot u --kernel k --legal-info "$T/fx/legal" --source-tag 'a/b' a.tar "$T/never.img" >"$T/out" 2>&1; rc=$?
 if [ "$rc" = 1 ] && grep -q -- '--source-tag may contain only' "$T/out"; then ok "F10 a --source-tag that is not a plain tag is refused"; else bad "F10 rc $rc: $(cat "$T/out")"; fi
 bash "$MCI" --help >"$T/out" 2>&1; rc=$?
 if [ "$rc" = 0 ] && grep -q -- '--legal-info' "$T/out" && grep -q -- '--source-tag' "$T/out" && grep -q -- '--source-url' "$T/out"; then ok "F11 --help names the three new options"; else bad "F11 rc $rc"; fi

@@ -42,6 +42,7 @@
 #include <linux/gpio/consumer.h>
 #include <linux/delay.h>
 #include <linux/of.h>
+#include <linux/limits.h>
 
 #define DRIVER_NAME	"panjit_ts"
 
@@ -483,7 +484,7 @@ static int cy8_reset(struct cy8_ts *ts)
 	return err ? err : i + 1;
 }
 
-static int cy8_probe(struct i2c_client *client, const struct i2c_device_id *id)
+static int cy8_probe(struct i2c_client *client)
 {
 	struct device *dev = &client->dev;
 	struct cy8_ts *ts;

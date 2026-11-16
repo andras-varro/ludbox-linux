@@ -1,5 +1,10 @@
 # USB Host Mode for Arca
 
+> **Scope.** This document is the vendor-kernel (4.14.52) story: the `/dev/mem` MUSB patch below and the
+> out-of-tree modules existed because that kernel had no host DMA and no controller drivers. Our own 7.3.4
+> image (`kernel/`) has the modules in-tree and handles MUSB through `kernel/patches/`; the `/dev/mem` patch
+> scripts are **likely dead on it and unverified there** [inferred, not measured on 7.3.4].
+
 ## Quick Start
 
 One command to enable USB host mode with game controller support:
@@ -76,7 +81,7 @@ driver (the only HID driver in this kernel) only binds to devices with `bInterfa
 
 The kernel supports loadable modules (`CONFIG_MODULES=y`) with force loading
 (`CONFIG_MODULE_FORCE_LOAD=y`) and no signature requirement (`CONFIG_MODULE_SIG` not set).
-We cross-compile three kernel modules from the matching kernel source (4.14.52):
+On the vendor kernel we cross-compiled three kernel modules from the matching source (4.14.52):
 
 | Module | Config Option | Purpose |
 |--------|--------------|---------|
@@ -162,15 +167,10 @@ cd usb_host
 arm-linux-gnueabihf-gcc -static -O2 -o devmem_write devmem_write.c
 ```
 
-### Step 3: Build the Xbox controller and USB audio kernel modules
+### Step 3: The Xbox controller and USB audio kernel modules
 
-```bash
-wsl.exe -e bash -lc "cd /mnt/c/work/roomwizard && kernel/build-bt-modules.sh --set usb --out usb_host/modules"
-```
-
-This needs the image tree `kernel/build-image.sh` leaves in `~/rw-kbuild-image`. It copies that tree,
-enables the joystick subsystem and USB audio as modules, and builds the seven modules against the
-image's Module.symvers, so they carry its symbol CRCs. `build-and-deploy.sh` does this itself.
+Nothing to build here: `xpad`, `joydev`, `ff-memless`, `snd-usb-audio` and `usb-storage` are in-tree `=m` in
+`kernel/config-7.3.4` and come from `kernel/build-image.sh`'s modules_install. The device scripts load them with `modprobe`.
 
 ### Step 4: Install the device files — what `build-and-deploy.sh` does for you
 
@@ -189,9 +189,8 @@ DEVICE=192.168.50.73
 ../device-files/usb-host            ->  /etc/init.d/usb-host
 ../device-files/xpad-modules        ->  /etc/init.d/xpad-modules
 
-# from the bundle, or built here: devmem_write 0755, the three .ko 0644
+# from the bundle, or built here: devmem_write 0755 (the modules are in-tree in the 7.3.4 image)
 devmem_write   ->  /usr/local/bin/devmem_write
-modules/*.ko   ->  /lib/modules/4.14.52/extra/
 ```
 
 Run it with `./build-and-deploy.sh $DEVICE`, or get the same result from `provision.sh` or the card-image installer.
@@ -200,7 +199,7 @@ Run it with `./build-and-deploy.sh $DEVICE`, or get the same result from `provis
 
 ```bash
 ssh root@$DEVICE /usr/local/bin/enable-usb-host.sh
-ssh root@$DEVICE "depmod -a 4.14.52 && insmod /lib/modules/4.14.52/extra/ff-memless.ko && insmod /lib/modules/4.14.52/extra/joydev.ko && insmod /lib/modules/4.14.52/extra/xpad.ko"
+ssh root@$DEVICE "modprobe ff-memless; modprobe joydev; modprobe xpad"
 ```
 
 ### Step 6: Boot persistence — also part of the plan above
@@ -286,7 +285,7 @@ USB device ID table that matches `045e:028e` regardless of the interface class.
 
 #### Kernel Module Loading
 
-The kernel has zero built-in loadable modules (the `/lib/modules/4.14.52/` directory was
+The kernel has zero built-in loadable modules (the `/lib/modules/4.14.52/` of the vendor kernel directory was
 empty). Key module-related config:
 
 ```
@@ -297,9 +296,8 @@ CONFIG_MODVERSIONS=y          # CRC versioning: ENABLED (but force-load bypasses
 # CONFIG_MODULE_SIG is not set # Module signing: NOT REQUIRED
 ```
 
-Modules are loaded with `insmod` (direct path) rather than `modprobe` since there's no
-pre-existing `modules.dep` database. Boot persistence uses an init script that runs
-`insmod` for each module in dependency order.
+On the 7.3.4 image the modules are in-tree and `modules.dep` is generated, so the boot scripts use `modprobe`.
+The `insmod` description above applies to the vendor kernel only.
 
 #### Boot Sequence
 
@@ -387,9 +385,6 @@ only what the manifests name, so those artifacts arrive but nothing installs the
 | `/usr/local/bin/enable-usb-host.sh` | `../device-files/enable-usb-host.sh` | USB host mode enabler |
 | `/etc/init.d/usb-host` | `../device-files/usb-host` | Boot persistence for USB host |
 | `/etc/rc5.d/S90usb-host` | Symlink → `../init.d/usb-host` | Runlevel 5 boot hook |
-| `/lib/modules/4.14.52/extra/ff-memless.ko` | `modules/ff-memless.ko` | Force-feedback module |
-| `/lib/modules/4.14.52/extra/joydev.ko` | `modules/joydev.ko` | Joystick device module |
-| `/lib/modules/4.14.52/extra/xpad.ko` | `modules/xpad.ko` | Xbox controller driver |
 | `/etc/init.d/xpad-modules` | `../device-files/xpad-modules` | Boot persistence for modules |
 | `/etc/rc5.d/S89xpad-modules` | Symlink → `../init.d/xpad-modules` | Runlevel 5 boot hook |
 
@@ -411,9 +406,7 @@ the move.
 | Struct verification fails | Different kernel version | Re-derive addresses from `vmlinux` analysis |
 | "DMA controller not set" in dmesg | Normal (from initial boot) | Check for `MUSB HDRC host driver` **after** patch |
 | USB device not detected | OTG adapter issue or no VBUS | Use powered USB hub, check adapter polarity |
-| Controller in lsusb but no /dev/input | xpad module not loaded | `insmod /lib/modules/4.14.52/extra/xpad.ko` |
-| insmod fails "Invalid module format" | Version mismatch | Use `insmod -f` (force) — `MODULE_FORCE_LOAD=y` allows this |
-| Module build fails | Missing build deps | `sudo apt-get install bc libssl-dev bison flex` |
+| Controller in lsusb but no /dev/input | xpad module not loaded | `modprobe xpad` (in-tree `=m` on the 7.3.4 image) |
 | No event device after xpad loads | Controller unplugged during load | Replug controller, or unbind/rebind via sysfs |
 | **Worked at boot, dead after a replug** | On `.188` a 95 s unplug/replug **works** — VBUS stays up and the disconnect is not processed until the device returns. The `.225` 60 s failure has no confirmed counterpart on current hardware | If it does happen: plug the device in, then `/etc/init.d/usb-host recover` (a driver re-probe). ⚠️ **`echo host > .../mode` is a silent no-op on this SoC** — `omap2430_ops` has no `.set_mode`. Detail `../SYSTEM_ANALYSIS.md#36-usb` |
 | **Nothing enumerates unless it was plugged in at boot** | **A standing property of this hardware, not an open bug** (settled 2026-08-14). MUSB powers the port only when a device is present as the driver probes; otherwise VBUS collapses seconds later and stays off. Three mechanisms read out of the driver source have each been applied and **refuted on hardware** | **Control Panel → USB → RESCAN** — one tap, ~5 s, dead port → playable pad, verified on a panel. Over SSH it is `/etc/init.d/usb-host recover` with the device already plugged in. `$MUSB/vbus` is the diagnostic (`Vbus off` = dead port); `mode` is not — it reads `a_idle` while a pad works. `../IMPROVEMENT_PLAN.md` |

@@ -1,0 +1,17 @@
+ti-bandgap: downgrade the 'sensor is unreliable' message from warn to info.
+OMAP3503 flags its bandgap UNRELIABLE; the warning appears on every boot and
+the project treats boot-console warnings as defects. Cosmetic (log level only).
+Rationale for the warn->info choice is inferred from the project's boot-console
+rule, not from a comment in the tree.
+
+--- a/drivers/thermal/ti-soc-thermal/ti-bandgap.c	2026-11-15 11:37:04.880901861 -0500
++++ b/drivers/thermal/ti-soc-thermal/ti-bandgap.c	2026-11-15 11:37:04.884902169 -0500
+@@ -897,7 +897,7 @@
+ 	bgp->dev = &pdev->dev;
+ 
+ 	if (TI_BANDGAP_HAS(bgp, UNRELIABLE))
+-		dev_warn(&pdev->dev,
++		dev_info(&pdev->dev,
+ 			 "This OMAP thermal sensor is unreliable. You've been warned\n");
+ 
+ 	if (TI_BANDGAP_HAS(bgp, TSHUT)) {

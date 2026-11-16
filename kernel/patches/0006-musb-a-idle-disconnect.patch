@@ -1,0 +1,25 @@
+musb core: handle DISCONNECT in A_IDLE / A_WAIT_BCON.
+CONNECT sets is_active but enters A_HOST only if VBUS reads valid, so a device
+can attach in these states. Unhandled, the child is never disconnected and
+musb_bus_suspend() fails with -EBUSY on every try. Resume the root hub and call
+musb_root_disconnect() (re-based from the 4.14.52 patch of the same name).
+
+--- a/drivers/usb/musb/musb_core.c	2026-11-15 11:37:04.972908925 -0500
++++ b/drivers/usb/musb/musb_core.c	2026-11-15 11:37:04.976909232 -0500
+@@ -976,6 +976,16 @@
+ 	case OTG_STATE_B_IDLE:
+ 		musb_g_disconnect(musb);
+ 		break;
++	case OTG_STATE_A_IDLE:
++	case OTG_STATE_A_WAIT_BCON:
++		/* CONNECT sets is_active but enters A_HOST only if VBUS
++		 * reads valid, so a device can attach in these states.
++		 * Unhandled, the child is never disconnected and
++		 * musb_bus_suspend() fails with -EBUSY on every try.
++		 */
++		musb_host_resume_root_hub(musb);
++		musb_root_disconnect(musb);
++		break;
+ 	default:
+ 		WARNING("unhandled DISCONNECT transition (%s)\n",
+ 			musb_otg_state_string(musb));

@@ -1,20 +1,13 @@
-musb_host: do not spend ~1 s with IRQs off flushing the TX FIFO of a device
-that is gone.
+musb host: bound the TX FIFO flush for a device that is already gone.
+A FIFO whose device is unplugged (e.g. behind a removed hub) never drains; each
+try is 1 ms with IRQs off on a single core, so 1000 tries stalled ~1 s per
+recurrence. usb_disconnect() marks the device NOTATTACHED before flushing, so
+flushes whose URB's device is NOTATTACHED get 10 tries and a dev_dbg; live
+devices keep upstream's 1000 tries and the dev_WARN_ONCE.
 
-Behind an unplugged hub the TX FIFO never drains, and musb_h_tx_flush_fifo()
-retries 1000 x mdelay(1) under musb->lock with IRQs off. dev_WARN_ONCE only
-silences the second and later prints, not the stall. The hub_event dequeue
-pays it twice per URB: once in musb_cleanup_urb(), and again in
-musb_ep_program() when musb_advance_schedule() starts the dead device's next
-queued URB on the same endpoint. Every TX flush that has a URB in hand now
-tries 10 times and reports at dev_dbg when that URB's device is NOTATTACHED;
-a live device keeps upstream's 1000 and its warning.
-
-SPDX-License-Identifier: GPL-2.0-only
-
---- a/drivers/usb/musb/musb_host.c
-+++ b/drivers/usb/musb/musb_host.c
-@@ -108,12 +108,12 @@
+--- a/drivers/usb/musb/musb_host.c	2026-11-15 11:37:04.904903704 -0500
++++ b/drivers/usb/musb/musb_host.c	2026-11-15 11:37:04.908904011 -0500
+@@ -84,12 +84,12 @@
  /*
   * Clear TX fifo. Needed to avoid BABBLE errors.
   */
@@ -29,7 +22,7 @@ SPDX-License-Identifier: GPL-2.0-only
  
  	csr = musb_readw(epio, MUSB_TXCSR);
  	while (csr & MUSB_TXCSR_FIFONOTEMPTY) {
-@@ -135,14 +135,45 @@
+@@ -111,14 +111,45 @@
  		 * Better to turn on musb_dbg() in musb_cleanup_urb() with
  		 * CPPI enabled to see the issue when aborting the tx channel.
  		 */
@@ -78,7 +71,7 @@ SPDX-License-Identifier: GPL-2.0-only
  static void musb_h_ep0_flush_fifo(struct musb_hw_ep *ep)
  {
  	void __iomem	*epio = ep->regs;
-@@ -784,7 +815,7 @@
+@@ -738,7 +769,7 @@
  			 * case
  			 */
  			if (!hw_ep->tx_double_buffered)
@@ -87,7 +80,7 @@ SPDX-License-Identifier: GPL-2.0-only
  
  			/*
  			 * We must not clear the DMAMODE bit before or in
-@@ -1328,7 +1359,7 @@
+@@ -1270,7 +1301,7 @@
  		/* do the proper sequence to abort the transfer in the
  		 * usb core; the dma engine should already be stopped.
  		 */
@@ -96,7 +89,7 @@ SPDX-License-Identifier: GPL-2.0-only
  		tx_csr &= ~(MUSB_TXCSR_AUTOSET
  				| MUSB_TXCSR_DMAENAB
  				| MUSB_TXCSR_H_ERROR
-@@ -2401,7 +2432,7 @@
+@@ -2351,7 +2382,7 @@
  		if (is_dma_capable() && dma)
  			musb_platform_clear_ep_rxintr(musb, ep->epnum);
  	} else if (ep->epnum) {

@@ -1,14 +1,8 @@
 #!/bin/sh
-# Bluetooth at boot: the bluetooth component's kernel modules, then bluetoothd.
+# Bluetooth at boot: load the in-tree Bluetooth modules with modprobe, then bluetoothd.
 #
-# The modules come from kernel/build-bt-modules.sh, built against OUR kernel image's symbol
-# CRCs, so they load only on a unit that boots that image. It is built with
-# KBUILD_BUILD_USER=arca and KBUILD_BUILD_HOST=build, which /proc/version carries as
-# "(arca@build)"; on any other kernel this prints one line and loads nothing.
-#
-# load-order.txt is written by that same build -- dependencies first, and the crypto the
-# SMP code allocates when btusb probes an adapter ahead of btusb -- so this script reads the
-# order rather than restating it. Its absence means the component was never deployed.
+# The modules are =m in kernel/config-7.3.4 and installed by kernel/build-image.sh, so they
+# load only on a unit that boots that image; on any other kernel modprobe fails and says so.
 #
 # bluetoothd has no daemon() call (BlueZ 5's -n only moves its log from syslog to stderr),
 # so it is backgrounded here and logs to syslog. An adapter that enumerates later is claimed
@@ -22,7 +16,7 @@
 # bluetoothd. hfp-ag is there for reconnection, not for calls: measured on .188 with a Sony
 # WI-C310, a bonded headset powered on again pages back only a host that offers the
 # Handsfree Audio Gateway -- A2DP alone, the btmon capture shows no Connect Request at all;
-# with hfp-ag it connects within seconds. It needs rfcomm.ko (kernel/build-bt-modules.sh).
+# with hfp-ag it connects within seconds. It needs rfcomm (modprobe, in-tree).
 #
 # Reconnecting bonded devices is this script's job, because BlueZ 5.66 never pages a BR/EDR
 # device on its own initiative except after a link loss within one adapter's lifetime:
@@ -40,8 +34,6 @@
 #
 # start exits 0 whatever happens: a unit with no dongle and no modules must still boot.
 
-MODDIR=/lib/modules/4.14.52/bt
-ORDER="$MODDIR/load-order.txt"
 DAEMON=/usr/libexec/bluetooth/bluetoothd
 # Plugins this kernel cannot serve, each of which logs an error at every start: the LE-audio
 # trio needs -E (experimental D-Bus), network needs bnep.ko, which is not built. Measured on
@@ -57,8 +49,6 @@ STORAGE=${BT_STORAGE:-/var/lib/bluetooth}
 # at the next start.
 CONF=/etc/bluetooth/main.conf
 RUNCONF=/var/run/bluetooth-main.conf
-
-our_kernel() { grep -q '(arca@build)' /proc/version 2>/dev/null; }
 
 # PIDs of every running process whose executable is named $1, whichever path it was started from.
 exe_pids() {
@@ -169,16 +159,64 @@ reconnect_all() {
   log "reconnect: $left bonded device(s) did not answer (off or out of range)"
 }
 
+# Launch bluetoothd exactly as start does; sets nothing, prints nothing.
+start_daemon() {
+  mkdir -p "$STORAGE" && chmod 700 "$STORAGE"
+  if sed "/^\[General\]/a Name=$(hostname)" "$CONF" > "$RUNCONF" 2>/dev/null &&
+     grep -q '^Name=' "$RUNCONF"; then
+    "$DAEMON" -P "$NOPLUGIN" -f "$RUNCONF" </dev/null >/dev/null 2>&1 &
+  else
+    "$DAEMON" -P "$NOPLUGIN" </dev/null >/dev/null 2>&1 &
+  fi
+}
+
 # Runs until killed: a reconnect pass for every new instance of hci0, the first included.
+# Also restarts bluetoothd if its process vanished (seen on 7.x): at most 3 restarts
+# in 10 minutes, then it gives up with one log line.
 watch() {
   echo $$ > "$WATCHPID"
   last=
+  restarts=
+  rpid=
+  bpid=
+  trap '[ -z "$rpid" ] || kill "$rpid" 2>/dev/null; exit 0' TERM
+  gave_up=
   while :; do
+    # Liveness without a fork: the remembered PID must still be a bluetoothd (comm read with the
+    # read builtin, which also catches PID reuse). Only a failed check walks /proc/*/exe, which
+    # costs a fork per process (~90 on a 600 MHz core: a visible CPU burst every cycle).
+    if ! { [ -n "$bpid" ] && { read -r comm < "/proc/$bpid/comm"; } 2>/dev/null && [ "$comm" = bluetoothd ]; }; then
+      # shellcheck disable=SC2046 # first PID of the list, or none
+      set -- $(exe_pids bluetoothd)
+      bpid=$1
+    fi
+    if [ -x "$DAEMON" ] && [ -z "$bpid" ] && [ -z "$gave_up" ]; then
+      now=$(date +%s)
+      kept=
+      for t in $restarts; do
+        [ $((now - t)) -lt 600 ] && kept="$kept $t"
+      done
+      restarts=$kept
+      # shellcheck disable=SC2086 # one word per timestamp
+      set -- $restarts
+      if [ "$#" -ge 3 ]; then
+        log "bluetoothd gone again, 3 restarts in 10 min already: giving up"
+        gave_up=1
+      else
+        log "bluetoothd gone, restarting"
+        start_daemon
+        bpid=$!
+        restarts="$restarts $now"
+        last=   # re-run the reconnect pass for the freshly powered adapter
+      fi
+    fi
     tok=$(hci_tok)
     if [ -n "$tok" ] && [ "$tok" != "$last" ]; then
       last=$tok
       log "reconnect: $HCI appeared (inode $tok)"
-      reconnect_all "$tok"
+      [ -z "$rpid" ] || kill "$rpid" 2>/dev/null
+      reconnect_all "$tok" &
+      rpid=$!
     fi
     sleep 10
   done
@@ -203,32 +241,15 @@ start_watch() {
 is_loaded() { lsmod | cut -d' ' -f1 | grep -qx "$(echo "${1%.ko}" | tr - _)"; }
 
 load_modules() {
-  n=0
-  while read -r ko; do
-    [ -n "$ko" ] || continue
-    if is_loaded "$ko"; then
-      :
-    elif insmod "$MODDIR/$ko" 2>/tmp/bt-insmod.err; then
-      n=$((n + 1))
-    else
-      echo "  $ko: FAILED -- $(cat /tmp/bt-insmod.err)"
-    fi
-  done < "$ORDER"
+  for m in btusb rfcomm bnep hidp uhid; do
+    is_loaded "$m" || modprobe "$m" 2>/tmp/bt-insmod.err || echo "  $m: FAILED -- $(cat /tmp/bt-insmod.err)"
+  done
   rm -f /tmp/bt-insmod.err
-  echo "  $n module(s) loaded"
 }
 
 case "$1" in
   start)
     echo "Starting Bluetooth..."
-    if ! our_kernel; then
-      echo "  not our kernel image (/proc/version): modules not loaded"
-      exit 0
-    fi
-    if [ ! -f "$ORDER" ]; then
-      echo "  $ORDER absent (bluetooth component not deployed to this unit)"
-      exit 0
-    fi
     load_modules
     if [ ! -x "$DAEMON" ]; then
       echo "  $DAEMON absent (bluetooth component not deployed to this unit)"
@@ -238,13 +259,9 @@ case "$1" in
     if [ -n "$pids" ]; then
       echo "  bluetoothd already running (pid $pids)"
     else
-      mkdir -p "$STORAGE" && chmod 700 "$STORAGE"
-      if sed "/^\[General\]/a Name=$(hostname)" "$CONF" > "$RUNCONF" 2>/dev/null &&
-         grep -q '^Name=' "$RUNCONF"; then
-        "$DAEMON" -P "$NOPLUGIN" -f "$RUNCONF" </dev/null >/dev/null 2>&1 &
-      else
-        "$DAEMON" -P "$NOPLUGIN" </dev/null >/dev/null 2>&1 &
-      fi
+      # Crash evidence: a fatal signal is then printed to the kernel log.
+      echo 1 > /proc/sys/kernel/print-fatal-signals 2>/dev/null
+      start_daemon
       echo "  bluetoothd started (pid $!)"
     fi
     start_bluealsa
@@ -263,20 +280,15 @@ case "$1" in
     rm -f "$WATCHPID"
     stop_exe bluealsa
     stop_exe bluetoothd
-    # Reverse load order, so a redeploy's restart loads the new .ko files. A module in use
+    # Reverse load order, so a redeploy's restart loads the new modules. A module in use
     # stays; rmmod's refusal is not an error here.
-    if [ -f "$ORDER" ]; then
-      sed '1!G;h;$!d' "$ORDER" | while read -r ko; do
-        rmmod "$(echo "${ko%.ko}" | tr - _)" 2>/dev/null
-      done
-    fi
+    for m in hidp bnep rfcomm btusb; do rmmod "$m" 2>/dev/null; done
     ;;
   restart)
     $0 stop
     $0 start
     ;;
   status)
-    if our_kernel; then echo "kernel: our image"; else echo "kernel: NOT our image -- nothing loads"; fi
     pids=$(daemon_pids)
     echo "bluetoothd: ${pids:-not running}"
     pids=$(exe_pids bluealsa)

@@ -10,10 +10,12 @@ BR2_DL_DIR="$(HOME)/br-dl"
 # Keep the symbol table: native_apps/check-arm-safe.sh cannot judge a stripped binary.
 # BR2_STRIP_strip is not set
 
-# Internal glibc toolchain; headers match the running kernel.
+# Internal glibc toolchain; headers are the 7.3.4 tree of the image kernel. Buildroot 2025.02 has no
+# series choice above 6.12, so "6.12.x or later" is the closest option (it sets AT_LEAST_6_12, and
+# glibc gets --enable-kernel=6.12: the rootfs runs only on our own 7.x kernel).
 BR2_KERNEL_HEADERS_VERSION=y
-BR2_DEFAULT_KERNEL_VERSION="4.14.52"
-BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_4_14=y
+BR2_DEFAULT_KERNEL_VERSION="7.3.4"
+BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_12=y
 BR2_TOOLCHAIN_BUILDROOT_GLIBC=y
 BR2_TOOLCHAIN_BUILDROOT_CXX=y
 
@@ -37,6 +39,7 @@ BR2_ROOTFS_POST_BUILD_SCRIPT="$(BR2_EXTERNAL_ARCA_PATH)/board/arca/post-build.sh
 # defconfig drops BR2_PACKAGE_BASH silently.
 BR2_PACKAGE_BUSYBOX_SHOW_OTHERS=y
 BR2_PACKAGE_BASH=y
+BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL_ARCA_PATH)/patches"
 BR2_PACKAGE_OPENSSH=y
 BR2_PACKAGE_CA_CERTIFICATES=y
 BR2_PACKAGE_DBUS=y

@@ -12,8 +12,7 @@ Everything that builds the **root filesystem we boot instead of the vendor's Yoc
   plus `libasound.so.2`, `libm`, `libstdc++`; BlueZ/bluealsa (`bluetooth/build-bluez.sh`, `build-bluealsa.sh`)
   also need glib, `libdbus-1.so.3` and readline 8. `vnc_client` and `devmem_write` are static hard-float.
 - **Build: Buildroot 2025.02 LTS** (supported to 2028-03), out of tree in WSL's native fs (`~/`, not DrvFs).
-  `BR2_cortex_a8` + `BR2_ARM_EABI` + NEON, internal glibc with C++, no kernel (`BR2_LINUX_KERNEL` off, 4.14
-  headers), BusyBox init driving SysV `rcS.d`/`rc5.d` so provisioning's links run unchanged.
+  `BR2_cortex_a8` + `BR2_ARM_EABI` + NEON, internal glibc with C++, no kernel (`BR2_LINUX_KERNEL` off). **Headers are the 7.3.4 tree** (`rootfs/configs/arca_defconfig`: `BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_12` plus `BR2_DEFAULT_KERNEL_VERSION="7.3.4"`; Buildroot 2025.02 has no 7.x choice), so the userland ELF ABI tag is 6.12.0 (measured, `readelf -n` on glibc, busybox, `sshd-session`) and **the rootfs runs only on our own 7.x kernel, not the vendor 4.14**. `external.mk` adds `--disable-libsanitizer` to `HOST_GCC_COMMON_CONF_OPTS`: gcc 13 libsanitizer includes `linux/scc.h`, which these headers lack (nothing on the device uses the sanitizers). Init is BusyBox init driving SysV `rcS.d`/`rc5.d` so provisioning's links run unchanged.
 - ⚠️ **`BR2_PACKAGE_BASH` needs `BR2_PACKAGE_BUSYBOX_SHOW_OTHERS`; `make defconfig` drops it silently.**
   `build-rootfs.sh` gates it. Debootstrap is ruled out: no qemu-user/binfmt here, and generic ARMv7 packages
   may carry `sdiv` (Cortex-A8 has none). Gate the target tree with `native_apps/check-arm-safe.sh`.
@@ -37,7 +36,7 @@ Everything that builds the **root filesystem we boot instead of the vendor's Yoc
 
 - **Root's login shell is `/bin/bash`**, set by `rootfs/board/arca/post-build.sh` (the Buildroot skeleton gives `/bin/sh`,
   BusyBox ash); the prompt comes from the overlay's `/etc/profile.d/prompt.sh`. Measured on `.188`.
-- **`make-card-image.sh` installs every component offline by default** (`--bundle <b>`, else `build/release`; `--no-bundle` builds the bare base) (`rootfs/commission-offline.sh --base <tree>` against the new image's p3 and p2). Measured on `.188`: a card built that way boots to the launcher, touch works, and the launcher's Shutdown tile runs `poweroff` and the panel goes dark.
+- **`make-card-image.sh` installs every component offline by default** (`--bundle <b>`, else `build/release`; `--no-bundle` builds the bare base) and **requires `--modules-tree <dir>` (the `<out>/modules` of `kernel/build-image.sh`) or `--no-modules`**, then runs `depmod` on the installed `/lib/modules/7.3.4` so modprobe works (`rootfs/commission-offline.sh --base <tree>` against the new image's p3 and p2). Measured on `.188`: a card built that way boots to the launcher, touch works, and the launcher's Shutdown tile runs `poweroff` and the panel goes dark.
 - **The image carries its licence documents:** `LICENSE.md`, `manifest.csv`, `licenses/` and `SOURCE-OFFER.txt` in p3 `/usr/share/doc/arca-licenses/` (`licence_docs_install`). `--legal-info` (default: `br-rw/legal-info` of the invoking user), `--source-tag` (default: the bundle's tag) and `--source-url` feed them; without a legal-info tree or a tag the summary prints `WARNING` lines and **that image must not be published**. Measured: a real image held all four, mode 0644, fsck clean.
 
 ## What the image must carry, and what it need not
@@ -47,7 +46,7 @@ Everything that builds the **root filesystem we boot instead of the vendor's Yoc
   `/dev/input/touchscreen0` (`app_launcher` exits without it); dbus (+ `DBUS_SYSTEM_BUS_ADDRESS`), avahi,
   `amixer`, `libasound` **with `/usr/share/alsa`**; `insmod`/`lsmod`, `rdate`, `hwclock -u`, `date -s`,
   `logger` + a syslogd, `start-stop-daemon`, `pidof -x`, `killall`, `/usr/share/zoneinfo`, DHCP on eth0
-  sending the host name, `reboot`/`poweroff` (BusyBox has no `shutdown` applet).
+  sending the host name, `reboot`/`poweroff` (BusyBox has no `shutdown` applet). ⚠️ **sshd's seccomp sandbox stays on.** `patches/openssh/0001-*.patch` (`BR2_GLOBAL_PATCH_DIR`) defines the five ARM `*_time64` syscall numbers and still applies in the build; with the real 7.3.4 headers it is probably no longer needed [unverified: not built without it]. Its origin: an earlier build against 4.14 headers lacked those numbers, OpenSSH's `#ifdef __NR_clock_gettime64` allowances compiled out, and kernel 7.3.4 killed `sshd-session` on syscall 403.
 - **Need not:** cron, `S40ctrlblk`, `update-rc.d`, any Steelcase software.
   BlueZ and bluealsa are our own builds, not Buildroot packages.
 

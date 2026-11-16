@@ -1,0 +1,36 @@
+--- a/sandbox-seccomp-filter.c
++++ b/sandbox-seccomp-filter.c
+@@ -57,6 +57,33 @@
+ #include <elf.h>
+ 
+ #include <asm/unistd.h>
++
++/*
++ * 32-bit ARM time64 syscalls. They are in the kernel since 5.1 and glibc 2.34+
++ * calls them (the vDSO falls back to clock_gettime64 on 7.x), but a build against
++ * kernel headers older than 5.1 does not define the numbers, so the
++ * "#ifdef __NR_*_time64" allowances below compile to nothing and the sandbox
++ * kills sshd-session with SIGSYS on syscall 403. The numbers are the generic
++ * table's and are fixed ABI. Only the time64 twins of syscalls this filter
++ * already allows are listed.
++ */
++#if defined(__arm__)
++# ifndef __NR_clock_gettime64
++#  define __NR_clock_gettime64 403
++# endif
++# ifndef __NR_clock_nanosleep_time64
++#  define __NR_clock_nanosleep_time64 407
++# endif
++# ifndef __NR_pselect6_time64
++#  define __NR_pselect6_time64 413
++# endif
++# ifndef __NR_ppoll_time64
++#  define __NR_ppoll_time64 414
++# endif
++# ifndef __NR_futex_time64
++#  define __NR_futex_time64 422
++# endif
++#endif /* __arm__ */
+ #ifdef __s390__
+ #include <asm/zcrypt.h>
+ #endif

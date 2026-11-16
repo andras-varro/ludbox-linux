@@ -6,7 +6,7 @@ Guidance for Claude Code (claude.ai/code) working in this repository.
 
 **Arca** (the codename used in code and paths; the product name is **Ludbox Linux**) repurposes the **Steelcase RoomWizard** — a wall-mounted meeting-room display — into a
 games/apps platform. The device is an embedded Linux box: **TI OMAP3503** ARM Cortex-A8 @ 600 MHz,
-234 MB RAM, 800×480 framebuffer, projected-capacitive touch, kernel 4.14.52, SysVinit. No GPU, no
+234 MB RAM, 800×480 framebuffer, projected-capacitive touch, vendor kernel 4.14.52 (ours: 7.3.4), SysVinit. No GPU, no
 DSP — all rendering is software. Display is legacy **omapfb/omapdss**; there is no DRM/KMS.
 
 **Two names, one rule (operator, 2026-10-13).** The product name **Ludbox Linux** appears in user-visible text only (launcher
@@ -21,9 +21,9 @@ captured vendor output. Logo: a cuckoo, `distro/arca-logo.svg`.
 to a physical device (reference unit `192.168.50.73`, aka RW09). Verifying a change means deploying it
 and looking at the panel — framebuffer screenshots via `fb565_to_png.py`.
 
-**Kernel policy: we build our own 4.14.52 image; a mainline 5.x/6.x port stays out.** It builds from the
-device's own config (asking Steelcase for source is ruled out and unnecessary) with `kernel/build-image.sh`,
-which applies `kernel/patches/` and `kernel/dts/`. Touch works as a loadable `.ko` (`kernel/drivers/cy8ctmg120_ts`, measured on `.188`), not built in — `kernel/README.md`, "What we patch" table, Touch row.
+**Kernel policy: we build our own mainline Linux 7.3.4 image (operator, 2026-11-15); 4.14 compatibility is not required.** `kernel/build-image.sh`
+builds it from `kernel/config-7.3.4`, `kernel/patches/` and `kernel/dts/`; the vendor 4.14.52 is what units shipped with. Touch is a loadable
+`.ko` (`kernel/drivers/cy8ctmg120_ts`). State, open items and what is unverified: `kernel/README.md`; policy: `SYSTEM_ANALYSIS.md#7-kernel-policy`.
 
 ### One fact, one home
 
@@ -62,7 +62,7 @@ don't copy.
 | `tests/CLAUDE.md` | the host regressions, what each cannot see, sabotage-harness discipline |
 | `scummvm-arca/CLAUDE.md`, `vnc_client/CLAUDE.md` | those ports |
 | `rootfs/CLAUDE.md` | our own root filesystem (p3): Buildroot tree, ABI, rc links, the generic card image, its offline installer, host naming |
-| `kernel/CLAUDE.md` | our 4.14.52 image: its patches, DT changes, build script and missing drivers — notes in `kernel/README.md` |
+| `kernel/CLAUDE.md` | our 7.3.4 image: its patches, DT changes, build script and out-of-tree drivers — notes in `kernel/README.md` |
 
 ⚠️ **The vanilla kernel tree is the authority for every subsystem the vendor did not patch, and
 reading it beats theorising from sysfs.** The USB-enumeration hunt cost most of a session to three
@@ -177,7 +177,7 @@ misparses. When in doubt, over-deploy — the failure mode is silent.
 | `common/audio_out.c`, `common/audio_gen.c` (+ `audio_out.h`, `audio_gen.h`) | `native_apps` + **ScummVM** — ⚠️ **two, not three: measured 2026-09-09**, `vnc_client/Makefile`'s `SRCS` names neither, and no `audio_out` symbol appears anywhere in that tree. They are on ScummVM's `OBJS` via `configure.patch`, which is why the row above cannot speak for them |
 | anything in `device-files/` (`arca-app`, the rules files, …) | neither — **only** `./provision.sh <ip>`, which ends in a reboot (or a new `make-card-image.sh` image, offline) |
 | the six **`usb`-group** device files (`usb-host`, `enable-usb-host.sh`, `xpad-modules`, `usb-audio-modules`, `usb-storage-modules`, `arca-storage`) | either of the above, **or** `cd usb_host && ./build-and-deploy.sh <ip>` — it compiles the `usb` group itself and, unlike them, needs no reboot. Same for the **`bluetooth`** group (`bluetooth`, `bluetooth.conf`, `bluetooth-main.conf`, `bluetooth-input.conf`) with `cd bluetooth && ./build-and-deploy.sh <ip>`, and the **`backup`** group (`arca-backup`, `backup.d/*.item`) with `cd native_apps && ./build-and-deploy.sh <ip>` |
-| `usb_host/devmem_write.c`; the `usb` set of `kernel/build-bt-modules.sh` | `cd usb_host && ./build-and-deploy.sh <ip>` (it builds the seven modules itself) |
+| `usb_host/devmem_write.c` | `cd usb_host && ./build-and-deploy.sh <ip>` (it ships `devmem_write`; the modules are in-tree) |
 
 ## Working from this host — Windows, WSL and the tools
 

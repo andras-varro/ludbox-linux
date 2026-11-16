@@ -1,0 +1,22 @@
+musb omap2430: run omap2430_low_level_init() at the end of omap2430_musb_init().
+A rebind's exit leaves MSTANDBY forced, and only a runtime resume clears it,
+which a glue that stays active across the rebind never gets: the Inventra DMA
+engine then cannot reach memory and transfers never complete. Needed because
+the project's USB RESCAN does an unbind+bind of musb-hdrc.
+Applies to pristine v7.3.4; 0005 is based on this one.
+
+--- a/drivers/usb/musb/omap2430.c	2026-11-15 11:37:04.928905547 -0500
++++ b/drivers/usb/musb/omap2430.c	2026-11-15 11:37:04.928905547 -0500
+@@ -237,6 +237,12 @@
+ 
+ 	musb_writel(musb->mregs, OTG_INTERFSEL, l);
+ 
++	/* A rebind's exit left MSTANDBY forced and only a runtime resume
++	 * clears it, which a glue still active across the rebind never gets:
++	 * the Inventra DMA engine then cannot reach memory and never completes.
++	 */
++	omap2430_low_level_init(musb);
++
+ 	dev_dbg(dev, "HS USB OTG: revision 0x%x, sysconfig 0x%02x, "
+ 			"sysstatus 0x%x, intrfsel 0x%x, simenable  0x%x\n",
+ 			musb_readl(musb->mregs, OTG_REVISION),

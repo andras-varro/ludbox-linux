@@ -17,10 +17,9 @@
 #   1. device-files/enable-usb-host.sh + device-files/usb-host — the boot-time
 #      host-mode bring-up and the RESCAN/recover paths, i.e.
 #      device-files/provision-rules.conf's `usb` group.
-#   2. xpad.ko / joydev.ko / ff-memless.ko and the USB-audio set, force-loaded (and the
-#      usb-storage.ko, to /lib/modules/4.14.52/storage)
-#      -> THE CONTROLLER AS /dev/input/event*. Build artifacts, so they travel in
-#      the bundle (../lib/arca-bundle.sh) to /lib/modules/4.14.52/extra on p6.
+#   2. The pad, USB-audio and USB-storage drivers are in-tree modules of the 7.3.4 image
+#      (kernel/build-image.sh modules_install; loaded by modprobe from the device scripts),
+#      so this component builds and ships no .ko.
 #   3. fsck.fat, from the Buildroot tree (~/br-rw/target/sbin/fsck.fat), stripped
 #      into fsck-staging/ and installed to /sbin/fsck.fat. arca-storage runs it
 #      before mounting a stick. Optional: when the source is absent this script
@@ -37,8 +36,6 @@ _START_SECONDS=$(date +%s)
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
-KERNEL_VERSION="4.14.52"
-MODULES_DIR="$SCRIPT_DIR/modules"
 
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # The two shared libraries every path needs: the SSH gate, and ../lib/arca-bundle.sh —
@@ -106,32 +103,10 @@ DEVICE="root@$DEVICE_IP"
 # native_apps' GAMES_BINARIES follows. Modes are DECLARED, never read off disk:
 # /mnt/c reports every file 0777 and discards chmod (../CLAUDE.md).
 #
-# USB_MODULES is the list kernel/build-bt-modules.sh --set usb produces, and it drives three things:
-# the "already built" short-circuit, the post-build presence check, and the artifact
-# rows below. A module added to the build script is added HERE and nowhere else.
-USB_MODULES=(
-    ff-memless.ko joydev.ko xpad.ko
-    snd-hwdep.ko snd-rawmidi.ko snd-usb-audio.ko snd-usbmidi-lib.ko
-)
-
 USB_ARTIFACTS=(
     "0755|$SCRIPT_DIR/devmem_write|/usr/local/bin/devmem_write"
 )
-for _mod in "${USB_MODULES[@]}"; do
-    USB_ARTIFACTS+=("0644|$MODULES_DIR/$_mod|/lib/modules/$KERNEL_VERSION/extra/$_mod")
-done
-unset _mod
 
-# The USB mass-storage module is built against OUR kernel image by ../kernel/build-bt-modules.sh
-# --set storage (the other seven are its --set usb), into modules-storage/ with
-# its load-order.txt, and goes to /lib/modules/4.14.52/storage. Order matters only to the init
-# script, which reads the load-order.txt that travels with them.
-STORAGE_DIR="$SCRIPT_DIR/modules-storage"
-STORAGE_MODULES=(usb-storage.ko)
-for _mod in "${STORAGE_MODULES[@]}" load-order.txt; do
-    USB_ARTIFACTS+=("0644|$STORAGE_DIR/$_mod|/lib/modules/$KERNEL_VERSION/storage/$_mod")
-done
-unset _mod
 
 # fsck.fat is built by Buildroot (rootfs/), not by this component. The copy shipped is
 # STRIPPED, staged under fsck-staging/ so the Buildroot tree is never touched. The ARM gate
@@ -169,7 +144,7 @@ if [[ -n "$DEVICE_IP" ]]; then
     arca_ssh_gate "$DEVICE" || err "Cannot continue without SSH to $DEVICE"
     ok "SSH to $DEVICE"
 
-    # Locally built modules, so any provenance stamp on the unit is about to stop
+    # Locally built artifacts, so any provenance stamp on the unit is about to stop
     # being true. One shared writer (../lib/arca-bundle.sh), before anything goes out.
     arca_bundle_clear_stamp "$DEVICE" \
         || warn "could not clear /opt/arca/bundle.info — it may still name an older release"
@@ -184,67 +159,6 @@ if [[ ! -f "$SCRIPT_DIR/devmem_write" || "$SCRIPT_DIR/devmem_write.c" -nt "$SCRI
 else
     ok "up to date"
 fi
-echo ""
-
-# ── 2. the seven kernel modules ─────────────────────────────────────────────
-#
-# Built against OUR kernel image (kernel/build-bt-modules.sh --set usb), so they carry the
-# image's symbol CRCs and load without "no symbol version for module_layout". Rebuilt when the
-# builder is newer than the result, as the storage step below is.
-ts "[2/7] kernel modules (Xbox controller + USB audio, kernel/build-bt-modules.sh --set usb)"
-_all_built=1
-for _mod in "${USB_MODULES[@]}" load-order.txt; do
-    [[ -f "$MODULES_DIR/$_mod" ]] || _all_built=0
-done
-if [[ -n "$(find "$REPO_ROOT/kernel/build-bt-modules.sh" -newer "$MODULES_DIR/load-order.txt" -print -quit 2>/dev/null)" ]]; then
-    _all_built=0
-fi
-if [[ $_all_built -eq 1 ]]; then
-    ok "already built in modules/"
-else
-    # The image the unit boots: ~/rw-kbuild-image, or the --work dir of another build-image.sh run
-    # named in ARCA_KBUILD_IMAGE (a test kernel). Modules must match the kernel they load on.
-    KIMG="${ARCA_KBUILD_IMAGE:-$HOME/rw-kbuild-image}"
-    [[ -f "$KIMG/linux-4.14.52/vmlinux" ]] \
-        || err "$KIMG is not built, and the USB modules are built against it.
-     Run kernel/build-image.sh first (in WSL), then re-run this."
-    REUSE=()
-    [[ -f "$HOME/rw-kbuild-usb/linux-4.14.52/Makefile" ]] && REUSE=(--reuse)
-    info "building (several minutes on the first run)..."
-    bash "$REPO_ROOT/kernel/build-bt-modules.sh" --set usb --image "$KIMG" --out "$MODULES_DIR" "${REUSE[@]}"
-fi
-for mod in "${USB_MODULES[@]}"; do
-    [[ -f "$MODULES_DIR/$mod" ]] || err "module $mod not in $MODULES_DIR — run kernel/build-bt-modules.sh --set usb --out usb_host/modules by hand to debug"
-done
-ok "${USB_MODULES[*]}"
-echo ""
-ts "[2/7] kernel modules (USB mass storage, kernel/build-bt-modules.sh --set storage)"
-_storage_ok=1
-for _mod in "${STORAGE_MODULES[@]}" load-order.txt; do
-    [[ -f "$STORAGE_DIR/$_mod" ]] || _storage_ok=0
-done
-if [[ -n "$(find "$REPO_ROOT/kernel/build-bt-modules.sh" -newer "$STORAGE_DIR/load-order.txt" -print -quit 2>/dev/null)" ]]; then
-    _storage_ok=0
-fi
-if [[ $_storage_ok -eq 0 ]]; then
-    # Built against the image the unit boots: ~/rw-kbuild-image, or the --work dir of another
-    # build-image.sh run named in ARCA_KBUILD_IMAGE (a test kernel). Modules must match the kernel
-    # they load on (module_layout CRC). Or run the builder by hand with
-    # --out usb_host/modules-storage, and this step then finds the result.
-    KIMG="${ARCA_KBUILD_IMAGE:-$HOME/rw-kbuild-image}"
-    [[ -f "$KIMG/linux-4.14.52/vmlinux" ]] \
-        || err "$KIMG is not built, and the storage modules are built against it.
-     Run kernel/build-image.sh first (in WSL), then re-run this."
-    REUSE=()
-    [[ -f "$HOME/rw-kbuild-storage/linux-4.14.52/Makefile" ]] && REUSE=(--reuse)
-    bash "$REPO_ROOT/kernel/build-bt-modules.sh" --set storage --image "$KIMG" --out "$STORAGE_DIR" "${REUSE[@]}"
-fi
-for _mod in "${STORAGE_MODULES[@]}"; do
-    [[ -f "$STORAGE_DIR/$_mod" ]] || err "module $_mod not in $STORAGE_DIR"
-    grep -qx "$_mod" "$STORAGE_DIR/load-order.txt" || err "$_mod missing from $STORAGE_DIR/load-order.txt"
-done
-unset _mod
-ok "${STORAGE_MODULES[*]}"
 echo ""
 
 
@@ -356,14 +270,13 @@ echo ""
 
 # ── 5. the eight built artifacts ─────────────────────────────────────────────
 ts "[5/7] Built artifacts"
-ssh "$DEVICE" "mkdir -p /usr/local/bin /lib/modules/$KERNEL_VERSION/extra /lib/modules/$KERNEL_VERSION/storage"
+ssh "$DEVICE" "mkdir -p /usr/local/bin"
 for a in "${USB_ARTIFACTS[@]}"; do
     mode="${a%%|*}"; rest="${a#*|}"; src="${rest%%|*}"; dev="${rest#*|}"
     scp -q "$src" "$DEVICE:$dev" || err "could not copy $src to $dev"
     ssh "$DEVICE" "chmod $mode '$dev'"
     ok "$(basename "$src") → $dev ($mode)"
 done
-ssh "$DEVICE" "depmod -a $KERNEL_VERSION 2>/dev/null || true"
 ok "depmod"
 echo ""
 
@@ -379,7 +292,7 @@ echo ""
 # back to it — MUSB only powers the port when a device is present as the driver
 # probes. Plug the device in, then run
 # `/etc/init.d/usb-host recover`.
-ts "[6/7] Enabling host mode and loading the modules now"
+ts "[6/7] Enabling host mode and loading the module services now"
 ssh "$DEVICE" "/etc/init.d/xpad-modules start" || warn "module load reported a failure"
 ssh "$DEVICE" "/etc/init.d/usb-audio-modules start" || warn "usb-audio module load reported a failure"
 ssh "$DEVICE" "/etc/init.d/usb-storage-modules start" || warn "usb-storage module load reported a failure"

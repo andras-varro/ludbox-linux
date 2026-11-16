@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * rw20: the Steelcase RoomWizard 20 wall display, as the board our 4.14.52 image boots on.
+ * rw20: the Steelcase RoomWizard 20 wall display, as the board our 7.3.4 image boots on.
  *
  * TI OMAP3503 (OMAP34xx dtsi), 256 MB RAM at 0x80000000, TWL4030 PMIC on I2C1, a 800x480 LVDS
  * panel on the DSS DPI port driven by the stock panel-dpi driver, an SMSC LAN9221 and a NAND on
@@ -129,6 +129,7 @@
 		compatible = "ti,omap-dmtimer-pwm";
 		#pwm-cells = <3>;
 		ti,timers = <&timer10>;
+		ti,clock-source = <0x00>;	/* sys_clk 13 MHz: the 32 kHz default clamps duty 0 to one tick, a ~2% glow */
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinmux_red_led_pin>;
 		status = "okay";
@@ -138,6 +139,7 @@
 		compatible = "ti,omap-dmtimer-pwm";
 		#pwm-cells = <3>;
 		ti,timers = <&timer11>;
+		ti,clock-source = <0x00>;	/* sys_clk 13 MHz: the 32 kHz default clamps duty 0 to one tick, a ~2% glow */
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinmux_green_led_pin>;
 		status = "okay";
@@ -150,7 +152,8 @@
 			pwms = <&pwm9 0 1250000 0>;
 			pwm-names = "backlight";
 			max-brightness = <100>;
-			brightness = <100>;
+			default-state = "on";
+			default-brightness = <100>;
 		};
 
 		green_led {
@@ -420,8 +423,8 @@
 		gpmc,page-burst-access-ns = <20>;
 		gpmc,bus-turnaround-ns = <12>;
 		gpmc,cycle2cycle-delay-ns = <12>;
-		gpmc,cycle2cycle-samecsen = <1>;
-		gpmc,cycle2cycle-diffcsen = <1>;
+		gpmc,cycle2cycle-samecsen;
+		gpmc,cycle2cycle-diffcsen;
 		gpmc,clk-activation-ns = <0>;
 		gpmc,wait-monitoring-ns = <0>;
 		gpmc,wr-data-mux-bus-ns = <0>;
@@ -618,4 +621,8 @@
 &usbhshost {
 	port1-mode = "ehci-phy";
 	port2-mode = "ehci-phy";
+};
+
+&timer12 {
+	/delete-property/ ti,timer-alwon;
 };

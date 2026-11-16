@@ -130,7 +130,7 @@ esac
 # consumer of each: gawk — tests/doc_check.sh uses {1,6} regex intervals, which mawk
 # (Ubuntu's default awk) lacks, so it exits 2; ssh — tests/arca_ssh_test.sh needs the real
 # client's error text; pkg-config — bluetooth/build-bluez.sh and build-bluealsa.sh;
-# modprobe (kmod) — kernel/build-bt-modules.sh `--dump-modversions`; the `image` group —
+# the `image` group —
 # Buildroot (rootfs/build-rootfs.sh: unzip rsync cpio perl), rootfs/make-card-image.sh
 # (dosfstools: mkfs.vfat and fsck.vfat) and uboot/build.sh (gcc-10,
 # which U-Boot requires over the stock gcc 9). sudo is NOT a row: it is what installs, so

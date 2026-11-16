@@ -1,0 +1,21 @@
+Route the ASUS dongle 0b05:1bf6 (a Realtek RTL8761CU) through the Realtek setup hook.
+
+Mainline lists no 0b05:1bf6 (v7.3.4 has 0b05:190e next to it, grep of btusb.c). Without an entry the
+dongle binds as a generic btusb device, btrtl_setup_realtek never runs and no firmware is loaded.
+btrtl itself already knows the chip (hci_rev 0x0e, rtl_bt/rtl8761cu_fw.bin, shipped from
+kernel/3rdparty/realtek/bluetooth). Chip identity measured on 4.14 (.188): lmp_subver 8761, hci_rev 000e.
+Not yet measured on 7.3.4 [unverified].
+
+Licence: GPL-2.0-only, as the file it patches.
+
+--- a/drivers/bluetooth/btusb.c
++++ b/drivers/bluetooth/btusb.c
+@@ -864,6 +864,8 @@ static const struct usb_device_id quirks_table[] = {
+ 						     BTUSB_WIDEBAND_SPEECH },
+ 	{ USB_DEVICE(0x0b05, 0x190e), .driver_info = BTUSB_REALTEK |
+ 						     BTUSB_WIDEBAND_SPEECH },
++	{ USB_DEVICE(0x0b05, 0x1bf6), .driver_info = BTUSB_REALTEK |
++						     BTUSB_WIDEBAND_SPEECH },
+ 	{ USB_DEVICE(0x2550, 0x8761), .driver_info = BTUSB_REALTEK |
+ 						     BTUSB_WIDEBAND_SPEECH },
+ 	{ USB_DEVICE(0x0bda, 0x8771), .driver_info = BTUSB_REALTEK |

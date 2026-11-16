@@ -20,10 +20,9 @@ touched either file, and the blob IDs above are the ones that commit records. Th
 
 - **Where it goes on the device:** `/lib/firmware/rtl_bt/rtl8761cu_fw.bin` and `…_config.bin`. The
   directory name is part of the name the driver requests; the files do nothing anywhere else.
-- **Who asks for it:** `btrtl.ko`, and only with `kernel/patches-modules/btrtl-rtl8761cu.patch` applied.
-  Stock 4.14 picks firmware by `lmp_subver` alone and asks this chip for `rtl8761a_fw.bin`, the wrong
-  chip's file. The patch keys on `hci_rev 000e`. `btusb.ko` needs `btusb-asus-1bf6-realtek.patch` to
-  hand `0b05:1bf6` to btrtl at all. Both modules come from `kernel/build-bt-modules.sh`.
+- **Who asks for it:** `btrtl.ko`, which supports this chip natively on 7.3.4 (no btrtl patch). `btusb.ko`
+  needs `kernel/patches/0011-btusb-asus-1bf6-realtek.patch` to hand `0b05:1bf6` to btrtl at all; both
+  modules come from the in-tree build of `kernel/build-image.sh`.
 - **How to tell it worked:** `dmesg` shows `rtl: examining hci_ver=0d hci_rev=000e … lmp_subver=8761`
   and then a request for `rtl_bt/rtl8761cu_fw.bin`. After the download the HCI version
   read reports revision `0x7bf1` instead of `0x000e`, manufacturer 93 (Realtek) — measured on .188.

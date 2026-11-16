@@ -373,11 +373,6 @@ AUDIO_VOL_UNITY	native_apps/CLAUDE.md	IMPROVEMENT_PLAN.md
 0..60000	native_apps/CLAUDE.md	SYSTEM_ANALYSIS.md
 touch_fit_axis_range	native_apps/CLAUDE.md	SYSTEM_ANALYSIS.md
 FB_TOUCH_INSET_MAX	native_apps/CLAUDE.md	SYSTEM_ANALYSIS.md
-0x7bf1	kernel/README.md	IMPROVEMENT_PLAN.md
-jitterentropy_rng	kernel/README.md	IMPROVEMENT_PLAN.md
-ic_id_table	kernel/README.md	IMPROVEMENT_PLAN.md
-algif_skcipher	kernel/README.md	IMPROVEMENT_PLAN.md
-926896a5	kernel/README.md	IMPROVEMENT_PLAN.md
 static-only-last	SYSTEM_ANALYSIS.md	IMPROVEMENT_PLAN.md
 screen_true_panel_width	native_apps/CLAUDE.md	IMPROVEMENT_PLAN.md
 fb_scale_bezel_to_surface	native_apps/CLAUDE.md	IMPROVEMENT_PLAN.md

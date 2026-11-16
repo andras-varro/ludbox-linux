@@ -196,7 +196,7 @@ echo "C. make-card-image.sh refuses a boot chain for another layout"
 
 NEVER="$TMP/never.img"
 # drive <args...>: stdout/stderr to files, status in DRC; the tar never exists.
-drive() { rm -f "$NEVER"; bash "$MCI" "$@" > "$TMP/out" 2> "$TMP/err" < /dev/null; DRC=$?; }
+drive() { rm -f "$NEVER"; bash "$MCI" --no-modules "$@" > "$TMP/out" 2> "$TMP/err" < /dev/null; DRC=$?; }
 # passes_refusal: the run got PAST the layout refusals (and died at a later, unrelated stage).
 passes_refusal() { [ "$DRC" -eq 1 ] && ! grep -q 'card layout has its root\|bootargs' "$TMP/err" && grep -q 'run as root\|no rootfs tar' "$TMP/err" && [ ! -e "$NEVER" ]; }
 
@@ -225,6 +225,37 @@ if passes_refusal; then ok "a COMMENTED bootargs= naming p6 passes (control: onl
 if [ -f "$REPO_DIR/uboot/uEnv.txt" ]; then
     drive --mlo m --uboot "$UB/p3.bin" --kernel k --uenv "$REPO_DIR/uboot/uEnv.txt" a.tar "$NEVER"
     if passes_refusal; then ok "the shipped uboot/uEnv.txt passes the refusal"; else bad "shipped uEnv.txt: rc $DRC: $(cat "$TMP/err")"; fi
+fi
+
+echo ""
+echo "C2. make-card-image.sh refuses an image without the in-tree module tree"
+# drive_raw: like drive, but WITHOUT the --no-modules that drive prepends.
+drive_raw() { rm -f "$NEVER"; bash "$MCI" "$@" > "$TMP/out" 2> "$TMP/err" < /dev/null; DRC=$?; }
+MT="$TMP/mt"; mkdir -p "$MT/empty" "$MT/partial/lib/modules/7.3.4/kernel/drivers" "$MT/full/lib/modules/7.3.4/kernel/drivers"
+for m in btusb xpad usb-storage snd-usb-audio; do : > "$MT/full/lib/modules/7.3.4/kernel/drivers/$m.ko"; done
+: > "$MT/partial/lib/modules/7.3.4/kernel/drivers/btusb.ko"
+COMMON="--mlo m --uboot $UB/p3.bin --kernel k"
+# shellcheck disable=SC2086
+drive_raw $COMMON a.tar "$NEVER"
+if [ "$DRC" -eq 2 ] && grep -q 'modules-tree' "$TMP/err" && [ ! -e "$NEVER" ]; then ok "no --modules-tree and no --no-modules: refused (exit 2)"; else bad "no module flag: rc $DRC: $(cat "$TMP/err")"; fi
+# shellcheck disable=SC2086
+drive_raw $COMMON --no-modules --modules-tree "$MT/full" a.tar "$NEVER"
+if [ "$DRC" -eq 2 ] && grep -q 'exclude each other' "$TMP/err"; then ok "--modules-tree with --no-modules: refused"; else bad "both flags: rc $DRC: $(cat "$TMP/err")"; fi
+# shellcheck disable=SC2086
+drive_raw $COMMON --modules-tree "$MT/empty" a.tar "$NEVER"
+if [ "$DRC" -eq 1 ] && grep -q 'holds no 7.3.4 module tree' "$TMP/err"; then ok "an empty --modules-tree is refused"; else bad "empty tree: rc $DRC: $(cat "$TMP/err")"; fi
+# shellcheck disable=SC2086
+drive_raw $COMMON --modules-tree "$MT/partial" a.tar "$NEVER"
+if [ "$DRC" -eq 1 ] && grep -q 'has no xpad.ko' "$TMP/err"; then ok "a tree missing xpad.ko is refused"; else bad "partial tree: rc $DRC: $(cat "$TMP/err")"; fi
+# shellcheck disable=SC2086
+drive_raw $COMMON --no-modules a.tar "$NEVER"
+if passes_refusal; then ok "--no-modules gets past the module checks (control)"; else bad "--no-modules: rc $DRC: $(cat "$TMP/err")"; fi
+if command -v depmod > /dev/null 2>&1 || command -v /sbin/depmod > /dev/null 2>&1; then
+    # shellcheck disable=SC2086
+    drive_raw $COMMON --modules-tree "$MT/full" a.tar "$NEVER"
+    if passes_refusal; then ok "a complete --modules-tree (lib/modules/7.3.4 under it) passes (control)"; else bad "full tree: rc $DRC: $(cat "$TMP/err")"; fi
+else
+    skipped "complete --modules-tree control" "depmod not installed"
 fi
 
 # ── D. sfdisk on sparse files ───────────────────────────────────────────────

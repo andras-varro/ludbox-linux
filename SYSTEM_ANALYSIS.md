@@ -42,7 +42,7 @@ continuity measurements recorded in [`HARDWARE.md`](HARDWARE.md), which also hol
 ### What this device is
 
 A wall-mounted meeting-room display repurposed as a games/apps platform. TI **OMAP3503** ARM
-Cortex-A8 at 600 MHz, 234 MB RAM, 800×480 LCD, projected-capacitive touch, Linux 4.14.52 with
+Cortex-A8 at 600 MHz, 234 MB RAM, 800×480 LCD, projected-capacitive touch, vendor Linux 4.14.52 (our image: 7.3.4, [Kernel policy](#7-kernel-policy)) with
 SysVinit, booting from a removable microSD card and powered over Ethernet. **No GPU and no DSP** —
 all rendering is software. There is no local app to run: everything is cross-compiled on a host and
 deployed over SSH.
@@ -374,7 +374,7 @@ video in software** — MPEG-1 326×240 + MP2 mono (pl_mpeg), YUV→RGB565 at 2�
 
 > ⚠️ This is a **legacy omapdss sysfs** interface. It does not exist under `omapdrm`. Anything
 > built on it is cheap today and would need rewriting as DRM atomic plane programming after a
-> **mainline** port (a 4.14.52 rebuild leaves it intact) — see [Kernel policy](#7-kernel-policy).
+> **mainline** `omapdrm` port (neither 4.14.52 nor our 7.3.4 image uses it) — see [Kernel policy](#7-kernel-policy).
 
 **As shipped.** X11/Xorg (`Xorg -br -nolisten tcp -nocursor -pn -dpms vt8 :0`, started by
 `/etc/init.d/x11`) hosting a WebKit browser. All removed in game mode; apps render straight to the
@@ -1659,7 +1659,7 @@ A card from `rootfs/make-card-image.sh` carries none of the vendor files: its p1
 
 **The kernel command line** has three sources: U-Boot's string (vendor: `sysargs` plus words U-Boot appends; ours: the built-in default, or
 `bootargs` from `uEnv.txt`, with `optargs` appended), passed in the ATAGs (neither the vendor DTB, `usb_host/original.dts`, nor `kernel/dts/`
-sets `bootargs`); then the words built into the kernel by `CMDLINE_EXTEND`, appended after it (`kernel/config-changes`, `set-str CMDLINE`). The line
+sets `bootargs`); then the words built into the kernel by `CMDLINE_EXTEND`, appended after it (`CONFIG_CMDLINE` in `kernel/config-7.3.4`). The line
 on `.188` under our chain (`/proc/cmdline`, 2026-10-11) is U-Boot's words up to `rootwait`, then the kernel's own:
 
 | Word | Comes from | Read by |
@@ -1671,7 +1671,7 @@ on `.188` under our chain (`/proc/cmdline`, 2026-10-11) is U-Boot's words up to 
 | `mpurate=auto` | U-Boot | **nothing**: no occurrence in the 4.14.52 tree, and it is in init's environment (measured, as `vram`). Inherited from the Overo lineage `[inferred]` |
 | `root=/dev/mmcblk0p3 rw rootfstype=ext4 rootwait` | U-Boot | `init/do_mounts.c`; by position, never by UUID. Built-in default of `uboot/rw20-board.patch`; the capture above was taken on the earlier layout (`p6`), and p3 is built, **not yet booted** |
 | `vt.global_cursor_default=0` | kernel `CMDLINE_EXTEND` | `drivers/tty/vt/vt.c`: the console cursor is off by default |
-| `usbcore.autosuspend=-1` | kernel `CMDLINE_EXTEND` | `drivers/usb/core/usb.c`: USB autosuspend off; the reason is in `kernel/config-changes` |
+| `usbcore.autosuspend=-1` | kernel `CMDLINE_EXTEND` | `drivers/usb/core/usb.c`: USB autosuspend off; set in `CONFIG_CMDLINE` of `kernel/config-7.3.4` |
 | `console=tty0` | kernel `CMDLINE_EXTEND` | the kernel console: the panel; last, so it is `/dev/console` while `ttyO1` keeps every printk |
 
 **Under the vendor U-Boot the line also carries `curBoot1`, `curBoot2`, `prmRstSt`, `coldBoot1`, `coldBoot2`** (boot-ROM status words, appended by the vendor U-Boot `[inferred]`: the recovered `sysargs` lacks them). Nothing in our
@@ -2139,9 +2139,14 @@ ScummVM went from 80 % to 32 % CPU using these; the VNC client independently reu
 
 ## 7. Kernel policy
 
-**Build our own 4.14.52 image from `usb_host/linux-4.14.52/`. A mainline 5.x/6.x port stays ruled out.**
-The two are separate questions and the case against the second does not carry to the first. Asking
-Steelcase for their source is also ruled out, and is needed for neither.
+**Policy (operator, 2026-11-15): our own image is mainline Linux 7.3.4, built by `kernel/build-image.sh` from `kernel/config-7.3.4`,
+`kernel/patches/` and `kernel/dts/rw20.dts`; compatibility with 4.14 is not required.** The vendor image is 4.14.52, and the rest of
+this document describes the **vendor** kernel unless it says otherwise. Asking Steelcase for their source is ruled out and needed for neither.
+
+⚠️ **Everything below up to the table is a measurement on a 4.14.52 image of ours (2026-09/10)** and is kept for what it says about the
+vendor kernel and the hardware; the state of the 7.3.4 image, its patches and its open items are in [kernel/README.md](kernel/README.md).
+Not yet done on 7.3.4 `[unverified]`: suspend and power management, the review of `dropped-symbols.txt`, the `ti-soc-thermal` sensor
+(reads as unreliable), and the module recipes under `usb_host/` and `bluetooth/`, which still target the 4.14.52 tree.
 
 **The ruling, so this is not re-litigated: an image of ours boots, and what is left is work rather than
 unknowns — measured 2026-09-23 on `.188`.** Built from this tree plus the one source patch in the table
@@ -2160,7 +2165,7 @@ date is not the build year). **Find a vendor change by function size, not by con
 2026-09-23:** of 31114 functions common to the vendor's `/proc/kallsyms` and our `System.map`, 55 differ in
 size, and the boot-relevant one was `smsc911x_drv_probe` (2788 vs 2692 B); vendor-only symbols are just
 `panjit_ts_*`, `sharp_*`, the rw20 logo, `__mach_desc_RW20` and the Spectre set (`cpu_ca17_*`). Disassemble
-the decompressed vendor `Image` and resolve its calls through that `kallsyms`. What an image must supply:
+the decompressed vendor `Image` and resolve its calls through that `kallsyms`. What a 4.14.52 image must supply (on 7.3.4 each row is answered by a patch in `kernel/patches/`, the DT `kernel/dts/rw20.dts` or the touch module, not by a vendor symbol; the current dropped-symbol list is `dropped-symbols.txt` from `build-image.sh`):
 
 | `/proc/config.gz` symbol | Absent from vanilla 4.14.52 | Cost |
 |---|---|---|
@@ -2195,14 +2200,12 @@ recovery is a card pull plus copying a backup back onto p1 (plain FAT). ⚠️ *
 never by the panel**, which stays blank until the panel driver exists; from SSH on, every panel and touch
 iteration is a `.ko` copied over, and touch itself still ends at an operator ([Touch](#33-touch)).
 
-**A mainline 5.x/6.x port stays out (standing operator decision); its DRM/KMS reason holds for `omapdrm` only.**
-Under `omapdrm`, `/dev/fb0` exists only via `CONFIG_DRM_FBDEV_EMULATION`, a **fixed** pixel format, while this
-project switches bpp at runtime in three components ([Display](#32-display)), and the DSS overlay sysfs is
-gone. That the emulation would *reject* the switch is **[inferred]**; **measured** is that the current stack
-supports it (`/sys/class/graphics/fb0/bits_per_pixel` tracks the running app). **Measured from upstream source
-2026-10-05: mainline still carries `omapfb`** (`drivers/video/fbdev/omap2/omapfb/`, own `dss/`), so a newer
-kernel is unevaluated, not ruled out: `kernel/README.md` → *Mainline and omapfb*. A 4.14.52 rebuild leaves
-omapfb, the switch and the overlay sysfs exactly as they are.
+**Mainline stays the policy, and the DRM/KMS reason does not apply.** `omapdrm` would give `/dev/fb0` only through
+`CONFIG_DRM_FBDEV_EMULATION`, a **fixed** pixel format, while this project switches bpp at runtime in three components
+([Display](#32-display)), and the DSS overlay sysfs is gone. That the emulation would *reject* the switch is **[inferred]**.
+Mainline 7.3.4 still carries `omapfb` (`drivers/video/fbdev/omap2/omapfb/`, own `dss/`), and `kernel/config-7.3.4` builds it with
+`DRM_OMAP` off, so the switch and the overlay sysfs stay as on 4.14 (panel lit and retro cores running, `.188`, 2026-11-14/15,
+[measured]; the 32/16 bpp switch itself was not isolated [unverified]).
 
 ⚠️ **What a rebuild does not buy: enumeration.** "Recompile the kernel and the USB problems go away" is
 not true and has been proposed. It buys the config defects above and the *ability* to patch the driver.

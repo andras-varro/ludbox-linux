@@ -1,48 +1,26 @@
 #!/bin/sh
-# Load the USB audio class modules.
+# Load the USB audio class module.
 #
-# The ALSA core, its OSS shim and the on-board TWL4030 codec are all compiled into this
-# kernel, so a USB DAC needs only the class driver -- but SND_USB_AUDIO selects SND_HWDEP
-# and SND_RAWMIDI and this kernel exports neither, so all four load here in dependency
-# order. Loading them registers a USB interface driver, which re-probes devices already on
-# the bus, so this does not have to run before the dongle is plugged in.
+# The ALSA core, its OSS emulation and the on-board TWL4030 codec are compiled into the
+# kernel, so a USB DAC needs only the class driver (CONFIG_SND_USB_AUDIO=m); modprobe
+# resolves snd-hwdep, snd-rawmidi and snd-usbmidi-lib from modules.dep. Loading it registers
+# a USB interface driver, which re-probes devices already on the bus, so this does not have
+# to run before the dongle is plugged in.
 #
 # Result on the first card that appears: ALSA card 1, and OSS minor 14,19 -> /dev/dsp1.
-# SND_DYNAMIC_MINORS is unset on this kernel, so that number is deterministic.
+# SND_DYNAMIC_MINORS is unset in the kernel config, so that number is deterministic.
 #
-# Unlike xpad-modules this reports each insmod by name instead of discarding stderr: a
-# missing .ko means the usb_host component was never deployed to this unit, and that is
-# worth one boot line. `start` still exits 0 either way -- a unit with no dongle and no
-# modules must still boot.
-
-MODDIR=/lib/modules/4.14.52/extra
-# Dependency order: hwdep and rawmidi first, then the MIDI helper, then the class driver.
-LOAD_ORDER="snd-hwdep snd-rawmidi snd-usbmidi-lib snd-usb-audio"
-# Reverse, with the underscore names rmmod actually uses.
-UNLOAD_ORDER="snd_usb_audio snd_usbmidi_lib snd_rawmidi snd_hwdep"
+# start exits 0 either way: a unit with no dongle must still boot.
 
 case "$1" in
   start)
     echo "Loading USB audio modules..."
-    for m in $LOAD_ORDER; do
-      # lsmod reports the underscore form, whatever the file is called.
-      if lsmod | cut -d' ' -f1 | grep -qx "$(echo "$m" | tr - _)"; then
-        echo "  $m.ko: already loaded"
-      elif [ ! -f "$MODDIR/$m.ko" ]; then
-        echo "  $m.ko: absent (usb_host component not deployed to this unit)"
-      elif insmod "$MODDIR/$m.ko" 2>/tmp/usb-audio-insmod.err; then
-        echo "  $m.ko: loaded"
-      else
-        echo "  $m.ko: FAILED -- $(cat /tmp/usb-audio-insmod.err)"
-      fi
-    done
+    modprobe snd-usb-audio 2>/tmp/usb-audio-insmod.err && echo "  snd-usb-audio: loaded" || echo "  snd-usb-audio: FAILED -- $(cat /tmp/usb-audio-insmod.err)"
     echo "USB audio modules done"
     ;;
   stop)
     echo "Unloading USB audio modules..."
-    for m in $UNLOAD_ORDER; do
-      rmmod "$m" 2>/dev/null
-    done
+    rmmod snd_usb_audio 2>/dev/null
     ;;
   restart)
     $0 stop

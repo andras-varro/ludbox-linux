@@ -1,5 +1,6 @@
 #!/bin/bash
 # make-card-image.sh --mlo <MLO> --uboot <u-boot.img> --kernel <uImage> [--uenv <file>] [--modules <dir>]
+#                    (--modules-tree <dir> | --no-modules)
 #                    [--bundle <b> | --no-bundle] <rootfs.tar> <out.img>
 #
 # Builds a whole SD-card IMAGE FILE for an Arca, from nothing but our own parts: one kind of
@@ -56,7 +57,8 @@ die() { echo "FAIL: $*" >&2; exit 1; }
 usage() {
     cat <<'USAGE'
 Usage: make-card-image.sh --mlo <MLO> --uboot <u-boot.img> --kernel <uImage> [--uenv <file>]
-                          [--modules <dir>] [--bundle <dir|tar> | --no-bundle] [--legal-info <dir>]
+                          [--modules <dir>] (--modules-tree <dir> | --no-modules)
+                          [--bundle <dir|tar> | --no-bundle] [--legal-info <dir>]
                           [--source-tag <tag>] [--source-url <url>] <rootfs.tar> <out.img>
 
   --mlo <file>     the SPL (MLO) from uboot/build.sh; becomes p1/MLO, written first
@@ -66,8 +68,15 @@ Usage: make-card-image.sh --mlo <MLO> --uboot <u-boot.img> --kernel <uImage> [--
                    as a second copy, p1/uImage-fallback
   --uenv <file>    p1/uEnv.txt (default: uboot/uEnv.txt, the all-commented template)
   --modules <dir>  directory of kernel modules (*.ko) copied to p3
-                   /lib/modules/4.14.52/extra/ (default: ~/rw-kmods of the
+                   /lib/modules/7.3.4/extra/ (default: ~/rw-kmods of the
                    invoking user, $SUDO_USER under sudo). cy8ctmg120_ts.ko is required.
+  --modules-tree <d>  the in-tree module tree of kernel/build-image.sh: <out>/modules (or its
+                   lib/modules/7.3.4, or the 7.3.4 directory itself). Installed into p3
+                   /lib/modules/7.3.4 (the build/source symlinks are dropped) and depmod -b runs on the
+                   result, so modprobe works (btusb, xpad, snd-usb-audio, usb-storage ...). Needs depmod
+                   on this host. REQUIRED unless --no-modules: a card without it has none of those.
+  --no-modules     build the image without the in-tree module tree: no Bluetooth, Xbox pad, USB audio or
+                   USB storage on that unit (only the --modules *.ko go on)
   --bundle <b>     a release.sh --stage-only bundle (directory or .tar.gz), installed with
                    rootfs/commission-offline.sh (no prompt), so the card boots with every component and
                    no provision.sh or deploy-all.sh afterwards. Default: build/release of this
@@ -89,7 +98,10 @@ The image is the same for every unit: no vendor file, no SSH key, no host name (
 one and generates its host key on first boot). It is 3293184 sectors (1.57 GiB) and fits a 2 GB card.
 USAGE
 }
+KVER="7.3.4"   # kernel release of kernel/build-image.sh (its LOCALVERSION is empty); names /lib/modules/<release>
 MODDIR=""
+MODTREE=""
+NO_MODULES=0
 BUNDLE=""
 NO_BUNDLE=0
 MLO=""
@@ -113,6 +125,9 @@ while [ $# -gt 0 ]; do
         --uenv=*) UENV="${1#--uenv=}"; shift ;;
         --modules) need_val $#; MODDIR="$2"; shift 2 ;;
         --modules=*) MODDIR="${1#--modules=}"; shift ;;
+        --modules-tree) need_val $#; MODTREE="$2"; shift 2 ;;
+        --modules-tree=*) MODTREE="${1#--modules-tree=}"; shift ;;
+        --no-modules) NO_MODULES=1; shift ;;
         --bundle) need_val $#; BUNDLE="$2"; shift 2 ;;
         --bundle=*) BUNDLE="${1#--bundle=}"; shift ;;
         --no-bundle) NO_BUNDLE=1; shift ;;
@@ -132,6 +147,10 @@ if [ -z "$MLO" ] || [ -z "$UBOOT" ] || [ -z "$KERNEL" ]; then
     echo "--mlo, --uboot and --kernel are all required" >&2; usage >&2; exit 2
 fi
 [ "$NO_BUNDLE" -eq 0 ] || [ -z "$BUNDLE" ] || { echo "--bundle and --no-bundle exclude each other" >&2; exit 2; }
+[ "$NO_MODULES" -eq 0 ] || [ -z "$MODTREE" ] || { echo "--modules-tree and --no-modules exclude each other" >&2; exit 2; }
+if [ "$NO_MODULES" -eq 0 ]; then
+    [ -n "$MODTREE" ] || { echo "FAIL: no --modules-tree: a card without the in-tree modules has no Bluetooth, Xbox pad, USB audio or USB storage (pass --modules-tree <out>/modules from kernel/build-image.sh, or --no-modules to build it that way)" >&2; exit 2; }
+fi
 ROOTTAR="$1"; OUT="$2"
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 [ -n "$UENV" ] || UENV="$SCRIPT_DIR/../uboot/uEnv.txt"
@@ -174,6 +193,20 @@ fi
 for a in "$ROOTTAR" "$OUT" "$MLO" "$UBOOT" "$KERNEL" "$UENV"; do
     [ ! -b "$a" ] || die "$a is a block device; this script only writes an image file"
 done
+MODSRC=""
+if [ "$NO_MODULES" -eq 0 ]; then
+    # build-image.sh leaves <out>/modules/lib/modules/<release>; accept that, lib/modules/<release>
+    # under it, or the release directory itself. Checked ahead of the root check (no root needed).
+    for c in "$MODTREE" "$MODTREE/$KVER" "$MODTREE/lib/modules/$KVER"; do
+        if [ -d "$c/kernel" ]; then MODSRC="$c"; break; fi
+    done
+    [ -n "$MODSRC" ] || die "--modules-tree $MODTREE holds no $KVER module tree (no kernel/ directory in it, in $KVER/ or in lib/modules/$KVER/); pass <out>/modules from kernel/build-image.sh"
+    for m in btusb.ko xpad.ko usb-storage.ko snd-usb-audio.ko; do
+        [ -n "$(find "$MODSRC/kernel" -name "$m" -print -quit)" ] || die "--modules-tree $MODSRC has no $m: not a complete build-image.sh module tree"
+    done
+    DEPMOD=$(command -v depmod || command -v /sbin/depmod || true)
+    [ -n "$DEPMOD" ] || die "depmod not installed on this host (package kmod); it is needed to write modules.dep into the image, or pass --no-modules"
+fi
 [ "$(id -u)" -eq 0 ] || die "run as root (wsl.exe -u root ...)"
 OUTABS=$(realpath -m -- "$OUT")
 case "$OUTABS" in
@@ -327,7 +360,7 @@ for n in 1 2 3; do
 done
 
 echo "== mkfs"
-# ext4 features are limited to what kernel 4.14 mounts and what an older
+# ext4 features are limited to what kernel 7.3.4 mounts and what an older
 # e2fsck understands: no metadata_csum, no 64bit. Labels are informational;
 # nothing identifies a partition by label or UUID.
 # -b 4096 is explicit: mke2fs picks 1 KiB blocks for a filesystem under 512 MiB, and a 4 KiB block
@@ -423,7 +456,13 @@ fill() {   # fill <partnum> <rootfs tar>
         mkdir -p "$MNT/p/home/root/data" "$MNT/p/home/root/log"
         [ ! -d "$MNT/p/home/root/.ssh" ] || chmod 700 "$MNT/p/home/root/.ssh"
         # The image keeps the build-time placeholder host name: the first boot replaces it.
-        EXTRA="$MNT/p/lib/modules/4.14.52/extra"
+        EXTRA="$MNT/p/lib/modules/$KVER/extra"
+        if [ "$NO_MODULES" -eq 0 ]; then
+            mkdir -p "$MNT/p/lib/modules/$KVER" || die "mkdir lib/modules/$KVER"
+            # build/ and source/ are symlinks to the kernel build host's tree: never on a card.
+            (cd "$MODSRC" && tar --owner=0 --group=0 --exclude=./build --exclude=./source -cf - .) \
+                | tar -xpf - -C "$MNT/p/lib/modules/$KVER" --no-same-owner || die "install the module tree $MODSRC"
+        fi
         mkdir -p "$EXTRA" || die "mkdir $EXTRA"
         NKO=0
         for ko in "$MODDIR"/*.ko; do
@@ -432,11 +471,17 @@ fill() {   # fill <partnum> <rootfs tar>
             NKO=$((NKO + 1))
         done
         [ -f "$EXTRA/cy8ctmg120_ts.ko" ] || die "cy8ctmg120_ts.ko did not land in p3"
+        if [ "$NO_MODULES" -eq 0 ]; then
+            # After the extra/ copy, so modules.dep names the touch driver too.
+            "$DEPMOD" -b "$MNT/p" "$KVER" || die "depmod -b $MNT/p $KVER failed"
+            [ -s "$MNT/p/lib/modules/$KVER/modules.dep" ] || die "no modules.dep on p3 after depmod"
+            grep -q '^kernel/.*btusb\.ko' "$MNT/p/lib/modules/$KVER/modules.dep" || die "modules.dep on p3 does not list btusb.ko"
+        fi
         if ! licence_docs_install "$MNT/p" "$SCRIPT_DIR/.." "$LEGAL" "$SOURCE_TAG" "$SOURCE_URL"; then
             umount "$MNT/p"; rm -f "$OUTABS"
             die "could not install the licence documents; the image is deleted"
         fi
-        echo "p3 holds $(find "$MNT/p" -xdev | wc -l) entries; $NKO kernel modules in /lib/modules/4.14.52/extra"
+        echo "p3 holds $(find "$MNT/p" -xdev | wc -l) entries; $NKO kernel modules in /lib/modules/$KVER/extra"
         if ! ssh_scan "$MNT/p"; then
             umount "$MNT/p"; rm -f "$OUTABS"
             die "SSH key material on the image; the image is deleted"

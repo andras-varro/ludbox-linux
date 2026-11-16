@@ -64,7 +64,7 @@ scripts it calls. To script a step, call that script directly:
   ./provision.sh <target> [flags]                       update a unit (ssh, reboots)
   ./provision.sh <target> --hostname NAME               name only, no reboot
   ./deploy-all.sh <target> [component]                  deploy (ssh)
-  ./rootfs/make-card-image.sh --mlo <f> --uboot <f> --kernel <f> --bundle <b> <rootfs.tar> <out.img>   card image
+  ./rootfs/make-card-image.sh --mlo <f> --uboot <f> --kernel <f> --modules-tree <d> --bundle <b> <rootfs.tar> <out.img>   card image
   ./setup-build-env.sh [--install-deps] [--scummvm]     host build prerequisites
 
 Full guide: DEVELOPING.md
@@ -159,12 +159,13 @@ do_image_card() {
       from kernel/build-image.sh
     - the root filesystem tar is what rootfs/build-rootfs.sh left in ~/br-rw-out
     - you have a bundle: ./release.sh --stage-only leaves one in build/release
-    - the kernel modules are in ~/rw-kmods (cy8ctmg120_ts.ko is required)
+    - the kernel modules are in ~/rw-kmods (cy8ctmg120_ts.ko is required), and the in-tree
+      module tree is the modules/ directory kernel/build-image.sh left (asked for below)
 
   It never touches a block device.
 PRE
     echo ""
-    local bundle mlo uboot kernel tar out
+    local bundle mlo uboot kernel tar out modtree
     read -r -p "  Bundle (tarball or directory) [build/release]: " bundle
     bundle="${bundle:-build/release}"
     if [ ! -e "$SCRIPT_DIR/$bundle" ] && [ ! -e "$bundle" ]; then
@@ -184,13 +185,15 @@ PRE
     read -r -p "  Root filesystem tar [$HOME/br-rw-out/rootfs.tar]: " tar
     tar="${tar:-$HOME/br-rw-out/rootfs.tar}"
     [ -f "$tar" ] || { err "No such file: $tar"; return 1; }
+    read -r -p "  In-tree module tree (build-image.sh <out>/modules): " modtree
+    [ -d "$modtree" ] || { err "No such directory: $modtree"; return 1; }
     read -r -p "  Output image file: " out
     [ -n "$out" ] || { err "An output file is required."; return 1; }
     echo ""
     confirm "Build $out?" || { warn "Skipped."; return 0; }
     echo ""
     sudo bash "$SCRIPT_DIR/rootfs/make-card-image.sh" --mlo "$mlo" --uboot "$uboot" --kernel "$kernel" \
-        --bundle "$bundle" "$tar" "$out" \
+        --modules-tree "$modtree" --bundle "$bundle" "$tar" "$out" \
         || err "Building the image failed."
 }
 

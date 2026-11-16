@@ -471,7 +471,7 @@ cat <<'NOTICE'
 =====================
 
 This bundle contains statically linked ARM binaries for @PRODUCT@
-(TI OMAP3503, Cortex-A8, kernel 4.14.52).  It contains NO vendor firmware and NO
+(TI OMAP3503, Cortex-A8, kernel 7.3.4).  It contains NO vendor firmware and NO
 device configuration.
 
 NOTICE
@@ -567,20 +567,16 @@ usb_host
 --------
 `devmem_write` is this project's own code (MIT).
 
-⚠️ `ff-memless.ko`, `joydev.ko`, `xpad.ko` and `usb-storage.ko` are LINUX KERNEL MODULES and are
-licensed under the GNU General Public License, version 2 (GPL-2.0-only), as is
-the kernel they are built against.  WRITTEN OFFER FOR SOURCE: the complete
-corresponding source is the unmodified upstream Linux 4.14.52 tree, as published
-at
+This bundle ships no kernel modules: the Xbox pad, USB audio, USB storage and Bluetooth
+drivers are modules of the kernel image built by `kernel/build-image.sh`, and the image is
+not part of this bundle.  WRITTEN OFFER FOR SOURCE for that kernel (GPL-2.0-only): the
+complete corresponding source is the unmodified upstream Linux 7.3.4 tree, as published at
 
-    https://cdn.kernel.org/pub/linux/kernel/v4.x/linux-4.14.52.tar.xz
+    https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.3.4.tar.xz
 
-together with the kernel configuration and build script in this project's
-repository at `kernel/build-bt-modules.sh` (`--set usb` for xpad, joydev,
-ff-memless and the USB audio modules; `--set storage` for usb-storage.ko).  No kernel source was modified;
-the four modules are upstream drivers compiled for this device's kernel
-configuration and patches in `kernel/config-changes` and `kernel/patches/`.  This offer is honoured for
-the lifetime of the release.
+together with the patches in `kernel/patches/`, `kernel/config-7.3.4`, the device tree
+`kernel/dts/rw20.dts` and the build script `kernel/build-image.sh` in this project's
+repository (the tree plus those patches is the source).  This offer is honoured for the lifetime of the release.
 
 bluetooth
 ---------
@@ -609,11 +605,6 @@ corresponding source is the unmodified upstream releases
 together with the build script in this project's repository at
 `bluetooth/build-bluealsa.sh`, which rebuilds both.
 
-⚠️ The modules under /lib/modules/4.14.52/bt are LINUX KERNEL MODULES, GPL-2.0-only.
-Their source is the same upstream Linux 4.14.52 tree as above, with this project's
-patches in `kernel/patches/` and `kernel/patches-modules/` (two of them change
-btusb.c and btrtl.c) and the build script `kernel/build-bt-modules.sh`.  This
-offer is honoured for the lifetime of the release.
 
 `rtl8761cu_fw.bin` and `rtl8761cu_config.bin` in /lib/firmware/rtl_bt are Realtek
 firmware from linux-firmware, redistributed unmodified under the Realtek licence

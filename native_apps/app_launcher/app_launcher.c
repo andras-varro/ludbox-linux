@@ -741,6 +741,12 @@ int main(int argc, char *argv[]) {
     hw_leds_off();
     LOG_INFO(&launcher.logger, "LEDs turned off");
 
+    /* Apply the saved backlight level before the first frame. The kernel
+     * brings the panel up at its own default (100%) and until now only
+     * fb_fade_out(), run when an app is launched, applied the setting.
+     * hw_set_backlight() scales by the configured level. */
+    hw_set_backlight(100);
+
     /* Ensure 32bpp — a previous process (e.g. ScummVM) may have left 16bpp */
     fb_set_bpp(fb_dev, 32);
 

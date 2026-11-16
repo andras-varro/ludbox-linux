@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # arca_kernel_tarball_test.sh — regression for lib/arca-kernel-src.sh and for the call sites
-# that must verify usb_host/linux-4.14.52.tar.xz before `tar xf`.
+# that must verify the linux-7.3.4.tar.xz before `tar xf`.
 #
 # Host-only, no device, no root, no network, no kernel build. Run it:
 #
@@ -13,7 +13,7 @@
 #
 #   A  the function: a good pin passes; one changed byte fails; a missing pin line, an
 #      ambiguous pin, a malformed pin, a missing file and a missing argument each fail
-#   B  the real pin file carries the linux-4.14.52.tar.xz line, and the real tarball verifies
+#   B  the real pin file carries one linux-7.3.4.tar.xz line and no 4.14.52 line, and the real tarball verifies
 #      against it when it is present (skipped, and said so, when it is absent)
 #   C  the call site contains a 64-hex literal: the pin is read, never copied
 #   D  the call site sources the library and calls arca_check_kernel_tarball within the six
@@ -29,7 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 LIB="${LIB:-$REPO_DIR/lib/arca-kernel-src.sh}"
 REAL_PIN="$REPO_DIR/rootfs/package-hashes/linux-headers.hash"
-REAL_TARBALL="$REPO_DIR/usb_host/linux-4.14.52.tar.xz"
+REAL_TARBALL="${ARCA_KERNEL_TARBALL:-$HOME/rw-kbuild-73/linux-7.3.4.tar.xz}"
 BUILD_IMAGE="$REPO_DIR/kernel/build-image.sh"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -94,16 +94,23 @@ case "$msg" in
 esac
 
 echo "== B  the real pin file and the real tarball"
-if grep -Eq '^sha256  [0-9a-f]{64}  linux-4\.14\.52\.tar\.xz\r?$' "$REAL_PIN"; then
-    ok "B1 linux-headers.hash has exactly the linux-4.14.52.tar.xz sha256 line"
+pin_re() { grep -Ec "^sha256  [0-9a-f]{64}  $1\.tar\.xz\r?\$" "$REAL_PIN"; }
+if [ "$(pin_re 'linux-4\.14\.52')" = 0 ] && [ "$(pin_re 'linux-7\.3\.4')" = 1 ]; then
+    ok "B1 linux-headers.hash has exactly one linux-7.3.4.tar.xz sha256 line (image kernel and Buildroot headers) and no 4.14.52 line"
 else
-    bad "B1 linux-headers.hash has exactly the linux-4.14.52.tar.xz sha256 line"
+    bad "B1 linux-headers.hash has exactly one linux-7.3.4.tar.xz sha256 line (image kernel and Buildroot headers) and no 4.14.52 line"
+fi
+# B1n negative control: the same pattern must reject a 63-hex line, or B1 cannot fail.
+if [ "$(printf 'sha256  %063d  linux-7.3.4.tar.xz\n' 1 | grep -Ec '^sha256  [0-9a-f]{64}  linux-7\.3\.4\.tar\.xz\r?$')" = 0 ]; then
+    ok "B1n the B1 pattern rejects a malformed (63-hex) line"
+else
+    bad "B1n the B1 pattern rejects a malformed (63-hex) line"
 fi
 if [ -f "$REAL_TARBALL" ]; then
     # No hash-file argument: exercises the default path the library computes from its own location.
-    expect_rc "B2 the real usb_host/linux-4.14.52.tar.xz verifies against the pin" 0 arca_check_kernel_tarball "$REAL_TARBALL"
+    expect_rc "B2 the real linux-7.3.4.tar.xz verifies against the pin" 0 arca_check_kernel_tarball "$REAL_TARBALL"
 else
-    skip "B2 usb_host/linux-4.14.52.tar.xz is absent; not verified here"
+    skip "B2 linux-7.3.4.tar.xz is absent; not verified here"
 fi
 
 # The pattern must match a 64-hex string, or the absence below proves nothing.

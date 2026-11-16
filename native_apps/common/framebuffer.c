@@ -382,8 +382,7 @@ static inline void *fb_target(Framebuffer *fb) {
 // set on every init, so a crashed or kill -9'ed predecessor is repaired, and fb_close()
 // never puts KD_TEXT back: the launcher closes and re-inits around each child, and the
 // console would flash in between. /dev/tty0 explicitly, because apps started from init
-// have no controlling tty. On the vendor kernel, which has no console on the panel, it is
-// a harmless no-op.
+// have no controlling tty.
 static void fb_console_graphics(void) {
     int tty = open("/dev/tty0", O_RDWR | O_CLOEXEC);
     if (tty < 0) return;

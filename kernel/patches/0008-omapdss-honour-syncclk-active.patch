@@ -1,6 +1,11 @@
---- a/drivers/video/fbdev/omap2/omapfb/dss/display.c	2026-09-23 10:10:52.912977751 -0400
-+++ b/drivers/video/fbdev/omap2/omapfb/dss/display.c	2026-09-23 10:10:52.928977747 -0400
-@@ -295,7 +295,14 @@
+omapdss: honour DT syncclk-active in videomode_to_omap_video_timings().
+Upstream copies data_pclk_edge to sync_pclk_edge. The vendor panel needs sync
+on the falling edge with data on the rising edge, so use DISPLAY_FLAGS_SYNC_POSEDGE
+/ SYNC_NEGEDGE when the DT gives them; otherwise keep the upstream behaviour.
+
+--- a/drivers/video/fbdev/omap2/omapfb/dss/display.c	2026-11-15 11:37:05.020912610 -0500
++++ b/drivers/video/fbdev/omap2/omapfb/dss/display.c	2026-11-15 11:37:05.020912610 -0500
+@@ -285,7 +285,14 @@
  		OMAPDSS_DRIVE_SIG_RISING_EDGE :
  		OMAPDSS_DRIVE_SIG_FALLING_EDGE;
  

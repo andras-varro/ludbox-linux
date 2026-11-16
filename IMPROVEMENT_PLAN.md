@@ -18,7 +18,7 @@
 - **A recorded cause and a prescribed fix are both hypotheses.** `open, confirmed` means the
   *symptom* reproduced and nothing more. Reproduce it, then find the cause yourself; and when an
   entry says "compare with X", read X. See `CLAUDE.md` → *Working style*.
-- Kernel work is in scope; the image build is F101. What stays excluded is in [Out of Scope](#out-of-scope).
+- Kernel work is in scope; the image is `kernel/build-image.sh` on mainline 7.3.4. What stays excluded is in [Out of Scope](#out-of-scope).
 
 **Before starting anything, read [`SYSTEM_ANALYSIS.md`](SYSTEM_ANALYSIS.md) §1 — *Read this first*.**
 Device facts live there; this file holds only what we intend to *do* about them.
@@ -76,16 +76,15 @@ possible recursive locking detected` — `sk_lock-AF_BLUETOOTH-BTPROTO_L2CAP` ta
 → `bt_accept_enqueue` → `lock_sock_nested`, from `l2cap_connect` / `hci_rx_work`. It did not reappear on the later
 reconnect. **Second sighting 2026-10-05, ~60 s after boot, during incoming BT connections:** the same splat in
 `hci_rx_work` → `l2cap_recv_frame` → `l2cap_connect` → `l2cap_sock_new_connection_cb` → `bt_accept_enqueue` →
-`lock_sock_nested`, held `conn->chan_lock`, `chan->lock#2/2` and `sk_lock-AF_BLUETOOTH-BTPROTO_L2CAP`, kernel 4.14.52
-tainted `O` (our out-of-tree modules). Console warnings are defects even when harmless. **Measured 2026-10-12, `/proc/config.gz` on `.115`:** `CONFIG_PROVE_LOCKING`, `LOCKDEP`, `DEBUG_LOCK_ALLOC`, `DEBUG_MUTEXES` and `DEBUG_SPINLOCK` are all `=y`, and the syslog there carries the same lockdep trace; these are debug options with a CPU cost on a 600 MHz core. Whether they come from the vendor config or from us is unknown: none of them is named in `kernel/config-changes` (the base config is `usb_host/device_config`, tracked, so `grep` it to tell).
-Cause not investigated;
-**[inferred]** candidate: the 4.14 parent/child L2CAP socket false positive that upstream later annotated with a
-nesting subclass. **Next:** read the upstream change to
-`l2cap_sock_new_connection_cb`; decide between backporting the annotation and dropping lockdep from the image.
+`lock_sock_nested`, held `conn->chan_lock`, `chan->lock#2/2` and `sk_lock-AF_BLUETOOTH-BTPROTO_L2CAP`, on the former
+4.14.52 image (lockdep was `=y` there, measured 2026-10-12 on `.115`). **Measured in `kernel/config-7.3.4`:** `PROVE_LOCKING`,
+`DEBUG_LOCK_ALLOC`, `DEBUG_MUTEXES` and `DEBUG_SPINLOCK` are all off, so the 7.3.4 image cannot print this splat; whether the
+parent/child L2CAP socket annotation is in 7.3.4 is **[unverified]**. **Done when** the item is dropped as moot, or a lockdep
+build of 7.3.4 is shown to splat and the annotation is read.
 
 ### B69. Does the SD slot's card-detect switch work, and is it on the pad the DT names? — open, unverified
 
-`kernel/dts/rw20.dts:550` has `cd-gpios = <&gpio4 31 GPIO_ACTIVE_LOW>` (gpio_127, the vendor's value, kept) while the pad it muxes as a GPIO (`rw20.dts:278`) is `sdmmc1_dat4` = gpio_126. **[unverified]** Whether the switch is read at all has not been checked; the card boots, so nothing observed depends on it. **Done when** a card insert and removal is observed in the kernel log, or the property is shown to be inert.
+`kernel/dts/rw20.dts:571` has `cd-gpios = <&gpio4 31 GPIO_ACTIVE_LOW>` (gpio_127, the vendor's value, kept) while the pad it muxes as a GPIO (`rw20.dts:286`) is `sdmmc1_dat4` = gpio_126. **[unverified]** Whether the switch is read at all has not been checked; the card boots, so nothing observed depends on it. **Done when** a card insert and removal is observed in the kernel log, or the property is shown to be inert.
 
 ### B76. A plain `reboot` can hang in the shutdown scripts, and `provision.sh` reboots that way — open, seen once on `.115`
 
@@ -100,79 +99,13 @@ and `stty -F /dev/ttyO1 -a`; `rc` echoes to the console (serial `ttyO1` + `tty0`
 
 ## Features
 
-Userspace except F101, which is the image build.
+Userspace, except the kernel-image entry.
 
 ---
 
-### F101. Build our own kernel image, rebased onto 4.14.336 — open
+### F170. 7.3.4 image: what is still open — open
 
-**The deliverable is a `uImage` we compiled, staged on p1 beside the vendor's, on 4.14.336 — the final 4.14 release
-(4.14 has been EOL since Jan 2024, so no newer one exists; a mainline kernel is unevaluated, see the kernel notes).** It brings every
-stable fix, including **FragmentSmack CVE-2018-5391** (a large `inet_frag` rework, not patched on .52; the stop-gap
-`ipfrag_high_thresh=262144` / `ipfrag_low_thresh=196608` is not applied). **Measured:** all 9 of our patches dry-run
-clean on 4.14.336 (one offset); the 12 `tcp-*` patches are redundant there; 3 of the 5 `patches-modules` (KNOB, HIDP
-length, `remote_efs`) are in .336, the two RTL8761CU ones still apply (`btusb` needs fuzz 2, refresh);
-`CPU_SPECTRE`/`HARDEN_BRANCH_PREDICTOR` exist there and .336 prints the IBE state at boot. **Risks (measured diffs):**
-`omap2430.c` drops `.set_vbus` from `omap2430_ops` (changes the SESSREQ/port-power VBUS path and the IRQ branch of our
-set-vbus-report patch), and `musbhsdma.c` has a TX-completion rework (our audio DMA path). `4.14.52` is pinned in
-`kernel/build-image.sh:18`, `build-modules.sh:15,21`, `build-bt-modules.sh:17,83`,
-`usb_host/build-and-deploy.sh:56`, `bluetooth/build-and-deploy.sh:43`, `device-files/bluetooth:29`, `touch-module:8`,
-`usb-audio-modules:18`, `xpad-modules:8-10` (use `uname -r`), `provision-rules.conf:118,128` and the `release.sh` licence
-text. **Rebase steps, stepwise:** (1) generalise the module paths to `uname -r`; (2) build .336 with our 9 patches and
-diff `dropped-symbols.txt`; (3) boot it on `.188`; (4) re-run the USB and audio checks; (5) retire the redundant
-patches. With vendor-kernel support dropped (see the cleanup item of that name) no second `.52` module set is needed.
-**Effort [inferred]:** about 1 h for the image, 0.5-1 day for the scripts, 1-2 operator sessions.
-
-**The image work:** the policy and the
-standing costs are [§7](SYSTEM_ANALYSIS.md#7-kernel-policy); this entry is the work. The image boots, takes
-DHCP and answers SSH, and the panel works ([`kernel/README.md`](kernel/README.md) holds the build, the patches
-and the p1 files). What is left is building the touch driver into the image, the fbcon cursor and boot
-console, and one unexplained dmesg line.
-
-**What the image is for — the payoff is deployment stability, not speed.** A kernel compiled here ships
-with its own corresponding source and can go in a release, which gives back the free undo both bring-up
-paths lost. The vendor-kernel byte-patch path is deleted (tag `last-vendor-kernel`), so the release
-supports only our image. ⚠️ **That is not delivered until an image we built is the one a unit is
-deployed on** — panel and touch working.
-
-**What to fold in, so the image is built once with everything wanted in it:**
-
-| Wanted | Change | Note |
-|---|---|---|
-| Touch | finish `kernel/drivers/cy8ctmg120_ts/` — single- and multi-touch work on our image as a `.ko` from `kernel/build-modules.sh`, loaded at boot by `device-files/touch-module` ([`kernel/README.md`](kernel/README.md) has its state), handshake in [§3.3](SYSTEM_ANALYSIS.md#33-touch) | Open: **(iii) pressure** — test a profile peak-height sum against a light/firm press, the columns and rows being mapped ([§3.3](SYSTEM_ANALYSIS.md#33-touch)); **(iv) calibration accuracy on our driver** — an operator check of the corners; it is unchecked beyond "taps land on tiles" |
-| fbcon cursor | `vt.global_cursor_default=0` via `CONFIG_CMDLINE_EXTEND` | permanently off. U-Boot's bootargs stay untouched — they cannot be persisted |
-| Boot messages on the panel | append `console=tty0` **last** in the same `CONFIG_CMDLINE_EXTEND`, so the panel is `/dev/console` (operator's choice) | ⚠️ **Resolve the hazard first — measured by code search:** no app sets `KD_GRAPHICS` or touches the VT, and apps `mmap` `/dev/fb0` directly, so once `tty0` is a console any printk at the default console loglevel — the known USB printk loop, say — draws over a running game. **The fix is `KDSETMODE KD_GRAPHICS` in `fb_init()` in `native_apps/common/framebuffer.c`** (operator agreed; every shipped fb program goes through it, so redeploy all three components): open `/dev/tty0` explicitly (apps have no controlling tty), set it unconditionally on every init so a crashed or `kill -9`ed predecessor is repaired, and do **not** restore `KD_TEXT` in `fb_close()` — the launcher closes and re-inits around each child, so that would flash the console; restore it only in the init script's `stop`, via a small helper. A `loglevel=` stays as a second line of defence. The serial getty on `ttyO1` comes from `inittab`, so it is unaffected **[inferred]** |
-| Scheduling | `PREEMPT`, `HZ=250` | config-only, and never measured to limit anything — include it, but do not justify the image with it |
-| USB gadget mode | `CONFIG_USB_GADGET` | config-only: the micro-B socket is already the one physical port |
-| Boot logo | the Arca cuckoo replaces Tux: render `distro/arca-logo.svg` to a ≤224-colour plain PPM and have a `kernel/patches/` entry replace `drivers/video/logo/logo_linux_clut224.ppm` (`LOGO_LINUX_CLUT224` is already enabled in `kernel/config-changes`) | 4.14 draws the logo at the top-left with no centring (`drivers/video/fbdev/core/fbmem.c:503`, `image.dx = 0`), so the bezel can cover its corner. Pad the PPM: a margin, or a full 800×480 frame with the logo centred. The full frame costs ~375 KB of image [inferred: one byte per pixel of `clut224` data]. A U-Boot splash of the logo is possible (`drivers/video/omap3_dss.c` is in v2026.10, but no board uses it) and would come after this row |
-
-**The order to do it in, cheapest first.**
-
-1. **The touch driver, the fbcon cursor and the boot console** — the three rows above, which share one
-   image build and one p1 write; the operator has allowed a reboot and a p1 write of `.188` for them. ⚠️ Until the
-   module is loaded, `app_launcher` still exits after boot on the missing `/dev/input/touchscreen0` and
-   the respawn loop clears fb0 every ~30 s — stop the init script before judging a panel frame.
-
-**Which boot channel — writing an image needs no console.** On our U-Boot an alternate filename needs only a
-`kernel=` line in p1's `uEnv.txt`, with `uImage-fallback` behind it (measured 2026-10-15, `.188`); overwriting `uImage-system` needs nothing, and recovery for that is a
-card pull plus copying a backup back onto p1
-([`#4-boot-chain-and-recovery`](SYSTEM_ANALYSIS.md#4-boot-chain-and-recovery)). The operator accepts the
-overwrite ("I can re-flash easily"), which does not retire
-[§1](SYSTEM_ANALYSIS.md#1-read-this-first) rule 3: **take a verified p1 backup before the write**, of the
-*running* kernel and not merely the pristine vendor one, because they can be different files. The serial console (`P4`, fitted; RS-232 behind `U27`, a MAX3232 breakout ordered for
-the operator's TTL cables — [`HARDWARE.md#4-unpopulated-and-expansion`](HARDWARE.md#4-unpopulated-and-expansion))
-is off the critical path now that SSH answers, and remains the only channel for an image that does not.
-⚠️ **Do not repoint `ctrlblock.bin` at a bootstrap image**: it overwrites two protected files and destroys
-the vendor recovery image.
-
-### F135. Boot the newest LTS kernel with omapfb on a spare card — open, operator request 2026-10-05, step 1 only
-
-Mainline still carries `omapfb`, so a newer kernel is unevaluated rather than ruled out; the evidence, the
-unproven list and the gains and costs are in `kernel/README.md` → *Mainline and omapfb* and are not repeated
-here. **Step 1 only:** on a **separate card**, so `.188`'s card is untouched, boot the newest LTS with omapfb
-and a DT panel node, and answer two questions: does the panel light, and does the runtime 32/16bpp switch work
-(`fbset`, `/sys/class/graphics/fb0/bits_per_pixel`). Anything past that (touch, Bluetooth, modules) waits on
-a yes to both.
+The image is `kernel/build-image.sh` with `kernel/config-7.3.4` and `kernel/patches/`; its state is the table in [`kernel/README.md`](kernel/README.md#driver-state-on-734). Left, none measured on 7.3.4 yet: **(a) touch pressure** — test a profile peak-height sum against a light/firm press ([§3.3](SYSTEM_ANALYSIS.md#33-touch)); **(b) touch calibration accuracy** — an operator check of the corners; **(c) boot logo** — render `distro/arca-logo.svg` to a ≤224-colour PPM and add a `kernel/patches/` entry replacing `drivers/video/logo/logo_linux_clut224.ppm` (`LOGO_LINUX_CLUT224` is enabled), padded or full-frame because the logo draws at the top-left with no centring **[inferred from 4.14 `fbmem.c`, not re-read on 7.3.4]**; **(d) suspend and power management**, and **(e) sshd seccomp** on a card built against the 7.3.4 headers (details: `kernel/README.md`), both **[unverified]**; **(f) USB gadget** — `CONFIG_USB_GADGET` is off (measured in the config), and `PREEMPT`/`HZ=250` are off too, never shown to limit anything. A kernel change is proven by booting it; take a verified p1 backup of the *running* image first ([`#4-boot-chain-and-recovery`](SYSTEM_ANALYSIS.md#4-boot-chain-and-recovery)). **Done when** each lettered item is measured on a unit or dropped.
 
 ### F137. Users other than root — open, operator wish 2026-10-09, not designed
 
@@ -207,7 +140,7 @@ no touch panel, other LED/backlight/watchdog paths, no speaker GPIO or bezel, 5 
 **board-profile layer** under `common/hardware.c`, `common/touch_input.c` and `provision.sh` rather than
 `#ifdef`s. Our binaries are soft-float against the Arca rootfs while stock BBB Debian is hard-float, so
 this ties to our own root filesystem (`rootfs/`; one rootfs for both boards). A BBB wants a mainline kernel with DRM fbdev emulation; the
-Steelcase RoomWizard stays on 4.14.52 omapfb. **Done when** the first question is answered: which board-specific
+Steelcase RoomWizard stays on omapfb, which the 7.3.4 image keeps (`panel-dpi`, per `kernel/README.md`). **Done when** the first question is answered: which board-specific
 paths a launcher plus one game actually touch, listed from a BBB boot.
 
 **Future scope, operator-agreed, not scheduled:** mouse-only operation of the launcher, Control Panel and games, for a unit with no touch and no keyboard or pad. The operator has a RoomWizard whose touch is broken, and a BeagleBone has no touch. The mouse pointer in the launcher and the Control Panel exists and is operator-verified; the games still take no mouse pointer.
@@ -253,7 +186,7 @@ and it must fire in a file of the same kind, or the scan goes blind where it use
 
 Recorded so the decision is not re-litigated. Anything needing a connector, a populated device or a wire
 is out under [`#8-hardware-policy`](SYSTEM_ANALYSIS.md#8-hardware-policy); a kernel config symbol on its own
-blocks nothing, since we build the image (F101). Requesting GPL source from Steelcase stays ruled out and
+blocks nothing, since we build the image. Requesting GPL source from Steelcase stays ruled out and
 is needed for nothing ([`#7-kernel-policy`](SYSTEM_ANALYSIS.md#7-kernel-policy)).
 
 | Item | Blocked by | Detail |
@@ -261,7 +194,7 @@ is needed for nothing ([`#7-kernel-policy`](SYSTEM_ANALYSIS.md#7-kernel-policy))
 | Enable the two EHCI USB host ports | **Nowhere to plug in** — no second USB connector and no unpopulated footprint on the board, so `CONFIG_USB_EHCI_HCD` is not what blocks this and an image we build gains nothing here | [`#36-usb`](SYSTEM_ANALYSIS.md#36-usb) |
 | SPI | Four controllers `okay` in the DT and `CONFIG_SPI` unset, but **nothing is on the bus** — no children are declared, and putting a device there needs a wire | [`#314-what-is-not-present`](SYSTEM_ANALYSIS.md#314-what-is-not-present) |
 | Piezo buzzer on TWL4030 PWM | **Needs a wire**, and all 3 dmtimer PWMs are taken; `CONFIG_PWM_TWL` is the cheap half | [`#39-i2c`](SYSTEM_ANALYSIS.md#39-i2c) |
-| Mainline 5.x/6.x port | **Standing operator decision to stay on our 4.14 build, not a closed technical verdict:** `omapdrm` would break the runtime bpp switching and the DSS overlay sysfs, but mainline still carries `omapfb` (upstream source, 2026-10-05), which is unevaluated on this device. Building 4.14.52 ourselves (F101) keeps all three intact | [`#7-kernel-policy`](SYSTEM_ANALYSIS.md#7-kernel-policy) |
+| `omapdrm` instead of `omapfb` | **Operator decision: the 7.3.4 image keeps `omapfb`** (`panel-dpi`, [`kernel/README.md`](kernel/README.md#driver-state-on-734)); `omapdrm` would break the runtime bpp switching and the DSS overlay sysfs | [`#7-kernel-policy`](SYSTEM_ANALYSIS.md#7-kernel-policy) |
 | Ambient-light sensor / auto-backlight | **No such hardware.** The teardown found no sensor and, decisively, no aperture, window or light pipe anywhere in the enclosure — a sensor would have nothing to sense even if fitted. ⚠️ Do **not** probe for it: `pv02_app 5` can hang I2C bus 1, which carries the PMIC. *Time-of-day* dimming needs no sensor and is still available. | [`#39-i2c`](SYSTEM_ANALYSIS.md#39-i2c) |
 | Serial console | Located and pinned out (`P4`), then declined: the recovery loop is *pull the card, reimage, DHCP, SSH*, and since NAND and U-Boot stay untouched the card **is** the entire failure surface. Serial would add boot visibility, not recovery capability. Revisit only if NAND or U-Boot ever get written — or once we are iterating on our own images (F101), where serial is the only channel that shows *why* one failed to boot, though fitting `P4` is itself a board change. | [`#312-serial-ports`](SYSTEM_ANALYSIS.md#312-serial-ports) |
 
