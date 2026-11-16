@@ -187,13 +187,13 @@ for want in 'md5: all' '\+x: all' '\.app: all' 'default-app:' 'n: all .* /bin/sh
         bad "1b a verify check did not run: /$want/"
     fi
 done
-# The usb group is ON by default, so its two links must be among the ones checked.
+# The usb group is ON by default, so its link must be among the ones checked.
 # Named explicitly because the generic 'boot links resolve' above still matches when
 # they are silently left out — which is how the gap survived.
-if printf '%s\n' "$OUT" | grep -qE 'boot links resolve .*S89.*S90'; then
-    ok "1c the default run checks the usb group's boot links too (S89, S90)"
+if printf '%s\n' "$OUT" | grep -qE 'boot links resolve .*S89'; then
+    ok "1c the default run checks the usb group's boot link too (S89)"
 else
-    bad "1c the default run checks the usb group's boot links too (S89, S90)"
+    bad "1c the default run checks the usb group's boot link too (S89)"
 fi
 # Same for the bluetooth group, also on by default.
 if printf '%s\n' "$OUT" | grep -qE 'boot links resolve .*S91'; then
@@ -372,9 +372,9 @@ expect_says 'USB HOST MODE was skipped \(--no-usb\)' \
 # default run's own message — it would pass whether or not the exclusion works.
 _bl=$(printf '%s\n' "$OUT" | grep -E 'boot links resolve' | head -1)
 if [ -n "$_bl" ] && ! printf '%s\n' "$_bl" | grep -q 'S89'; then
-    ok "4c --no-usb drops S89/S90 from the boot-link check instead of failing on them"
+    ok "4c --no-usb drops S89 from the boot-link check instead of failing on them"
 else
-    bad "4c --no-usb drops S89/S90 from the boot-link check instead of failing on them"
+    bad "4c --no-usb drops S89 from the boot-link check instead of failing on them"
     printf '%s\n' "$OUT" | grep -E 'boot link' | sed 's/^/        /' | head -5
 fi
 

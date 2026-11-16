@@ -159,12 +159,8 @@ Boot with the port empty and it stays unpowered for that whole boot — anything
 never even given VBUS, so there is nothing for the rescan to find. Once the port *is* live, an
 unplug/replug re-enumerates normally (measured across a 95 s gap), and then the rescan works exactly as
 advertised.
-
-The only recovery reachable from userspace is a driver re-probe:
-
-```sh
-/etc/init.d/usb-host recover      # plug the device in FIRST, then run this
-```
+The only recovery reachable from userspace is a driver re-probe, which Control Panel -> USB -> RESCAN does
+(plug the device in FIRST, then tap it).
 
 ⚠️ **Do not use `echo host > …/musb-hdrc.0.auto/mode`.** Earlier versions of this file recommended it. It
 is a **silent no-op** on this SoC — `omap2430_ops` has no `.set_mode`, so the store returns success having

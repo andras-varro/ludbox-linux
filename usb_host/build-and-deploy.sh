@@ -14,9 +14,8 @@
 #
 # ── TWO mechanisms, TWO homes, neither on p1 ───────────────────────────────
 #
-#   1. device-files/enable-usb-host.sh + device-files/usb-host — the boot-time
-#      host-mode bring-up and the RESCAN/recover paths, i.e.
-#      device-files/provision-rules.conf's `usb` group.
+#   1. device-files/provision-rules.conf's `usb` group — the module-loader and
+#      storage scripts. Host mode itself is enabled in-kernel by the 7.3.4 image.
 #   2. The pad, USB-audio and USB-storage drivers are in-tree modules of the 7.3.4 image
 #      (kernel/build-image.sh modules_install; loaded by modprobe from the device scripts),
 #      so this component builds and ships no .ko.
@@ -96,16 +95,14 @@ else
 fi
 DEVICE="root@$DEVICE_IP"
 
-# ── the eight built artifacts, declared ONCE ─────────────────────────────────
+# ── the built artifacts, declared ONCE ─────────────────────────────────
 #
 # "<mode>|<local path>|<device path>". Both the --bundle staging and the scp
 # deploy read this array, so a new artifact is added in one place — the same rule
 # native_apps' GAMES_BINARIES follows. Modes are DECLARED, never read off disk:
 # /mnt/c reports every file 0777 and discards chmod (../CLAUDE.md).
 #
-USB_ARTIFACTS=(
-    "0755|$SCRIPT_DIR/devmem_write|/usr/local/bin/devmem_write"
-)
+USB_ARTIFACTS=()   # fsck.fat is appended below when Buildroot has built it
 
 
 # fsck.fat is built by Buildroot (rootfs/), not by this component. The copy shipped is
@@ -151,18 +148,8 @@ if [[ -n "$DEVICE_IP" ]]; then
 fi
 echo ""
 
-# ── 1. devmem_write ─────────────────────────────────────────────────────────
-ts "[1/7] devmem_write"
-if [[ ! -f "$SCRIPT_DIR/devmem_write" || "$SCRIPT_DIR/devmem_write.c" -nt "$SCRIPT_DIR/devmem_write" ]]; then
-    arm-linux-gnueabihf-gcc -static -O2 -o "$SCRIPT_DIR/devmem_write" "$SCRIPT_DIR/devmem_write.c"
-    ok "built $(file -b "$SCRIPT_DIR/devmem_write" 2>/dev/null | cut -d, -f1-2)"
-else
-    ok "up to date"
-fi
-echo ""
 
-
-# ── 3. the ARM-safety gate, on all eight ─────────────────────────────────────
+# ── 3. the ARM-safety gate, on every built artifact ─────────────────────────────────────
 #
 # Cortex-A8 has no hardware integer divide: an sdiv/udiv INSTRUCTION is SIGILL
 # (exit 132) with a blank screen and no log. Runs before the deploy AND before
@@ -187,7 +174,10 @@ for a in "${USB_ARTIFACTS[@]}"; do
     ARM_TARGETS+=("${a#*|}"); ARM_TARGETS[-1]="${ARM_TARGETS[-1]%%|*}"
 done
 [[ -f "$FSCK_SRC" ]] && ARM_TARGETS+=("$FSCK_SRC")
-if [[ -x "$REPO_ROOT/native_apps/check-arm-safe.sh" || -f "$REPO_ROOT/native_apps/check-arm-safe.sh" ]]; then
+if [[ ${#ARM_TARGETS[@]} -eq 0 ]]; then
+    # check-arm-safe.sh with no arguments falls back to build/* of the current directory: never ask it that
+    ok "no ARM artifact to gate (fsck.fat absent)"
+elif [[ -x "$REPO_ROOT/native_apps/check-arm-safe.sh" || -f "$REPO_ROOT/native_apps/check-arm-safe.sh" ]]; then
     arm_rc=0
     bash "$REPO_ROOT/native_apps/check-arm-safe.sh" "${ARM_TARGETS[@]}" || arm_rc=$?
     case "$arm_rc" in
@@ -213,7 +203,7 @@ if [[ -n "$BUNDLE_DIR" ]]; then
         arca_bundle_add "$BUNDLE_DIR" usb_host "$mode" "$src" "$dev" \
             || err "staging failed: $dev"
     done
-    warn "The three device scripts are provision-rules.conf's, not the bundle's"
+    warn "The device scripts are provision-rules.conf's, not the bundle's"
     ok "Staged $(arca_bundle_finish "$BUNDLE_DIR" usb_host) file(s)"
     echo ""
     exit 0
@@ -227,7 +217,7 @@ fi
 
 # ── 4. the `usb` group of the provision plan ────────────────────────────────
 #
-# ⚠️ The decisions are NOT here. The three device scripts, their modes and the two
+# ⚠️ The decisions are NOT here. The device scripts, their modes and the two
 # rc5.d links are records in device-files/provision-rules.conf, read by this
 # script, by provision.sh and by commission-offline.sh — so the three
 # paths cannot drift. The executor is the SAME
@@ -265,10 +255,10 @@ ssh "$DEVICE" "cat > /tmp/arca-usb-plan" < "$USB_PLAN"
 arca_provision_online_script | ssh "$DEVICE" "cat > /tmp/arca-usb-provision.sh"
 ssh "$DEVICE" "sh /tmp/arca-usb-provision.sh /tmp/arca-usb-plan; rc=\$?; rm -f /tmp/arca-usb-provision.sh /tmp/arca-usb-plan; exit \$rc" \
     || err "the usb provision step failed on the device"
-ok "scripts installed, S89xpad-modules and S90usb-host linked"
+ok "scripts installed, S88usb-storage-modules and S89xpad-modules linked"
 echo ""
 
-# ── 5. the eight built artifacts ─────────────────────────────────────────────
+# ── 5. the built artifacts ─────────────────────────────────────────────
 ts "[5/7] Built artifacts"
 ssh "$DEVICE" "mkdir -p /usr/local/bin"
 for a in "${USB_ARTIFACTS[@]}"; do
@@ -282,21 +272,15 @@ echo ""
 
 # ── 6. bring it up now, without a reboot ────────────────────────────────────
 #
-# Host mode and the module loads are runtime state, so they can be done
-# immediately — which is what makes the dev loop one command, with no reboot.
-#
-# Go through the init script rather than straight to enable-usb-host.sh, so this
-# path and the boot path are the same code.
-#
-# ⚠️ If no device is plugged in RIGHT NOW, the port will be dead when you come
-# back to it — MUSB only powers the port when a device is present as the driver
-# probes. Plug the device in, then run
-# `/etc/init.d/usb-host recover`.
-ts "[6/7] Enabling host mode and loading the module services now"
+# The module loads are runtime state, so they can be done immediately — which is
+# what makes the dev loop one command, with no reboot. Host mode itself is
+# enabled in-kernel by the 7.3.4 image (kernel/patches), so there is nothing to
+# start for it. A port that came up dead is revived from the Control Panel USB
+# page (RESCAN), with the device plugged in first.
+ts "[6/7] Loading the module services now"
 ssh "$DEVICE" "/etc/init.d/xpad-modules start" || warn "module load reported a failure"
 ssh "$DEVICE" "/etc/init.d/usb-audio-modules start" || warn "usb-audio module load reported a failure"
 ssh "$DEVICE" "/etc/init.d/usb-storage-modules start" || warn "usb-storage module load reported a failure"
-ssh "$DEVICE" "/etc/init.d/usb-host start" || warn "usb-host start reported a failure"
 echo ""
 
 # ── 7. verify ────────────────────────────────────────────────────────────────
@@ -316,7 +300,7 @@ VB=/sys/devices/platform/68000000.ocp/480ab000.usb_otg_hs/musb-hdrc.0.auto/vbus
 if [ -r "$VB" ]; then
     echo "  $(cat "$VB" 2>/dev/null)"
     echo "  'Vbus off' means nothing plugged in later will be seen — plug the"
-    echo "  device in and run /etc/init.d/usb-host recover."
+    echo "  device in and rescan from the Control Panel USB page."
 else
     echo "  unknown — MUSB not bound"
 fi
@@ -347,7 +331,7 @@ done
 
 echo ""
 echo "--- boot links ---"
-for l in /etc/rc5.d/S88usb-storage-modules /etc/rc5.d/S89xpad-modules /etc/rc5.d/S90usb-host; do
+for l in /etc/rc5.d/S88usb-storage-modules /etc/rc5.d/S89xpad-modules; do
     if [ -L "$l" ]; then
         echo "  $l -> $(readlink "$l")"
     else

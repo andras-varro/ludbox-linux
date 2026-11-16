@@ -2,7 +2,6 @@
 *.dtb
 *.dts
 kernel-config-*
-devmem_write
 
 # uImage files (large binaries from device boot partition)
 uImage-system

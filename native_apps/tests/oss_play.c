@@ -316,7 +316,7 @@ int main(int argc, char *argv[])
         return 0;
     }
 
-    /* GPIO12 HIGH unmutes SPKR1 — same poke audio.c's enable_amp() makes. */
+    /* GPIO12 HIGH unmutes SPKR1: on 7.3.4 a DT gpio-hog does it from boot, so the sysfs poke below only matters on the vendor kernel. */
     FILE *g = fopen("/sys/class/gpio/gpio12/direction", "w");
     if (g) { fputs("out", g); fclose(g); }
     g = fopen("/sys/class/gpio/gpio12/value", "w");

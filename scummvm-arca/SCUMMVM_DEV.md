@@ -61,7 +61,7 @@ Corner zones are gesture-only — all taps in 80px corners are suppressed from t
 ## Audio
 
 **Signal path:** OssMixerManager → `audio_out.c` → ALSA `plughw:N,0` (22050 Hz mono S16_LE requested; `plughw` converts) → card 0 TWL4030 DAC1 → HandsfreeL/R → SPKR1, or card 1 a USB DAC  
-**Amp enable:** GPIO12 HIGH (set by `/etc/init.d/audio-enable` at boot)  
+**Amp enable:** GPIO12 HIGH (DT gpio-hog in rw20.dts, from boot)  
 **Hardware audio details:** See [`SYSTEM_ANALYSIS.md#34-audio`](../SYSTEM_ANALYSIS.md#34-audio)
 
 **Design choices that are still this file's:**

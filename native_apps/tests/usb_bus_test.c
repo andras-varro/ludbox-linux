@@ -17,7 +17,7 @@
  *      card "HID" in one order or the other — so the fixture has exactly two;
  *   C  the ALSA card comes from an interface's sound/cardN child;
  *   D  the hub is a hub, so peripherals counts 1 — the same "non-hub device"
- *      rule device-files/usb-host uses to decide a recover worked;
+ *      rule the Control Panel RESCAN (usb_page.c) uses to decide a re-probe worked;
  *   E  a missing product string falls back to manufacturer, then "USB DEVICE";
  *   F  max truncates, and an unreadable root is 0 devices, not a crash.
  */

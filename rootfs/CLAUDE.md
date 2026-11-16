@@ -10,7 +10,7 @@ Everything that builds the **root filesystem we boot instead of the vendor's Yoc
 - **ABI: soft-float EABI (not EABIHF), loader `/lib/ld-linux.so.3`, glibc >= 2.31.** Measured 2026-10-08 by
   `readelf` of the vendor `libc.so.6` and `/opt/games/snake`: our dynamic binaries need at most `GLIBC_2.28`
   plus `libasound.so.2`, `libm`, `libstdc++`; BlueZ/bluealsa (`bluetooth/build-bluez.sh`, `build-bluealsa.sh`)
-  also need glib, `libdbus-1.so.3` and readline 8. `vnc_client` and `devmem_write` are static hard-float.
+  also need glib, `libdbus-1.so.3` and readline 8. `vnc_client` is static hard-float.
 - **Build: Buildroot 2025.02 LTS** (supported to 2028-03), out of tree in WSL's native fs (`~/`, not DrvFs).
   `BR2_cortex_a8` + `BR2_ARM_EABI` + NEON, internal glibc with C++, no kernel (`BR2_LINUX_KERNEL` off). **Headers are the 7.3.4 tree** (`rootfs/configs/arca_defconfig`: `BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_12` plus `BR2_DEFAULT_KERNEL_VERSION="7.3.4"`; Buildroot 2025.02 has no 7.x choice), so the userland ELF ABI tag is 6.12.0 (measured, `readelf -n` on glibc, busybox, `sshd-session`) and **the rootfs runs only on our own 7.x kernel, not the vendor 4.14**. `external.mk` adds `--disable-libsanitizer` to `HOST_GCC_COMMON_CONF_OPTS`: gcc 13 libsanitizer includes `linux/scc.h`, which these headers lack (nothing on the device uses the sanitizers). Init is BusyBox init driving SysV `rcS.d`/`rc5.d` so provisioning's links run unchanged.
 - ⚠️ **`BR2_PACKAGE_BASH` needs `BR2_PACKAGE_BUSYBOX_SHOW_OTHERS`; `make defconfig` drops it silently.**

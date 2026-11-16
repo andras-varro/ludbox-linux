@@ -7,7 +7,7 @@
 # local cache (the Buildroot build tree, the dependency tarballs the component scripts
 # fetch - one that is missing is downloaded here instead, to the same place - the U-Boot
 # clone, the ScummVM tree), plus downloads (the Ubuntu glibc source the static vnc_client
-# and devmem_write embed, ScummVM's zlib and libpng). Every third-party member is checked
+# embeds, ScummVM's zlib and libpng). Every third-party member is checked
 # against the sha256 or commit that the component's own build script pins, and the
 # result is graded by rootfs/check-source-offer.sh before the tar is written.
 #
@@ -23,7 +23,7 @@ REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
 . "$REPO/lib/product.sh"
 
 # The Ubuntu source package of the glibc the host cross-toolchain links statically into
-# vnc_client and devmem_write. archive.ubuntu.com no longer serves 2.31-0ubuntu9.9
+# vnc_client. archive.ubuntu.com no longer serves 2.31-0ubuntu9.9
 # (superseded); Launchpad keeps every published file. The .dsc carries the hashes of the
 # other two, so only its own hash is pinned here.
 UBUNTU_GLIBC_VERSION="2.31-0ubuntu9.9"
@@ -200,7 +200,7 @@ else
     ( cd "$REPO" && git ls-files -z -c -- . ':!HardwarePhotos' | tar "${TAR_OWNER[@]}" --null -T - --transform "s|^|arca-${TAG}/|" -cf - 2>/dev/null ) \
         | xz -T0 -6 >"$STAGE/repo/arca-${TAG}.tar.xz"
 fi
-add_made "arca" "$TAG" "MIT;mixed" "native_apps games and tools, app_launcher, devmem_write, scripts, patches, device tree, kernel config" \
+add_made "arca" "$TAG" "MIT;mixed" "native_apps games and tools, app_launcher, scripts, patches, device tree, kernel config" \
     "repo/arca-${TAG}.tar.xz" "this release" "none:"
 
 info "Buildroot"
@@ -296,7 +296,7 @@ for f in glibc_2.31.orig.tar.xz "glibc_${UBUNTU_GLIBC_VERSION}.debian.tar.xz"; d
     echo "$want  $CACHE/$f" | sha256sum -c --quiet - || die "$f does not match the .dsc"
 done
 GL="LGPL-2.1-or-later"
-GB="vnc_client, devmem_write (static libc.a of the host cross-toolchain)"
+GB="vnc_client (static libc.a of the host cross-toolchain)"
 add "glibc-host" "$UBUNTU_GLIBC_VERSION" "$GL" "$GB" "host-libc/glibc_2.31.orig.tar.xz" "${UBUNTU_GLIBC_BASE}/glibc_2.31.orig.tar.xz" \
     "$CACHE/glibc_2.31.orig.tar.xz" "dsc:host-libc/glibc_${UBUNTU_GLIBC_VERSION}.dsc:glibc_2.31.orig.tar.xz"
 add "glibc-host-debian" "$UBUNTU_GLIBC_VERSION" "$GL" "$GB" "host-libc/glibc_${UBUNTU_GLIBC_VERSION}.debian.tar.xz" \
@@ -379,7 +379,7 @@ Finding the source of a program on the card
                (scummvm-arca/backend-files).
  vnc_client/ bluetooth/ native_apps/ scummvm-deps/   the libraries those programs link.
  host-libc/    the Ubuntu glibc source: the host cross-toolchain links its static libc.a into
-               vnc_client and devmem_write, which are therefore LGPL-covered binaries.
+               vnc_client, which is therefore an LGPL-covered binary.
  repo/         our own code (native apps, launcher, build and deploy scripts, rootfs/ external
                tree, patches) at the release commit.
  licenses/     licence notices for components whose source is not required, and the Realtek

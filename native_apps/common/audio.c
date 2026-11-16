@@ -17,7 +17,7 @@
  * count are defined THERE and used here.  Do not re-spell one of them.
  *
  * ⚠️ **This file opens no device.**  The one playback mode is audio_out.c's
- * continuous stream, which owns the fd, the ioctls, the GPIO12 amp and the device
+ * continuous stream, which owns the fd, the ioctls and the device
  * path; what is here is which mono source fills that stream (the mix bus, or the
  * theremin's oscillator) and the voices, clips and beds that feed the bus.
  */
@@ -174,7 +174,7 @@ static bool sample_arm(Audio *audio, AudioSampleVoice *sv, const char *what,
 
 /** Open the continuous stream and put the mix bus on it — the one device half.
  *
- * ⚠️ GPIO12, the device-path resolution (`audio_device`, so a DAC unplugged since
+ * ⚠️ The device-path resolution (`audio_device`, so a DAC unplugged since
  * the last open is picked up here), the format/rate/channel negotiation and its
  * read-back all live in `audio_out_open_default()`: ScummVM links audio_out.c and
  * not this file, so a copy here would be a seam only the games could see.  It

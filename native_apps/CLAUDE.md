@@ -529,8 +529,8 @@ icons come from `gen_cp_icons.py`. Settings "apps" never become launcher tiles; 
   `cp_status()` (6 s) that takes the page title's place in the bar while it shows (green or orange, cut with ".." if too wide), and reach the wizard or `touch_raw` through `cp_run_touch_tool()`, which reloads geometry
   and calls `rebuild_ui` itself — `main()` does not rebuild after a page's `run_fullscreen`. **Keyboard and pad:** a page lists its widgets in the optional `CpPage.focusables`, from the same `button_rect()` / `toggle_hit_rect()` its hit-test uses; arrows move a focus ring, Enter/Space activate it as a synthetic tap, so **no page's `input()` changes**; Esc/Backspace cancel a dialog or go back, and do nothing on home. `focus_drain_keys()` runs after every full-screen run so an Esc typed there is not BACK here; the Input testers repaint only their hold-to-exit band with `fb_swap_rect()`.
 - **`enter()` only marks work pending**, so the page paints first. The USB page's opening scan of an empty port
-  (or one whose musb `mode` reads `b_*`, `usb_port_dead()`) queues one port re-probe (`RECOVER_TRIES=1`, measured 6.0 s on .188): ~6 s on every open while the socket
-  is empty, kept by operator decision; RESCAN keeps three attempts. Disabled controls refuse input in the widget (`Widget.disabled`).
+  (or one whose musb `mode` reads `b_*`, `usb_port_dead()`) queues one port re-probe (`once`, one rebind attempt, measured 6.0 s on .188): ~6 s on every open while the socket
+  is empty, kept by operator decision; RESCAN keeps `USB_RECOVER_TRIES` (3). Disabled controls refuse input in the widget (`Widget.disabled`).
 - **Rejected:** one executable per page (init respawns the launcher, so the return path breaks, and every tap re-inits fb, touch and config). `dlopen`'d pages are deferred — an ABI version field refused on mismatch,
   exported helpers and `check-arm-safe.sh` over the `.so` would all be required.
 - **`control_panel <page>` opens one page directly, so a page can be captured over SSH** (`cp_page_find()` in `control_panel/cp_page_name.c`, host test `tests/cp_page_name_test.c`). Names are the page-table names in lowercase (`audio display led usb bluetooth input network monitor information system`), case-insensitive, a unique prefix accepted; arguments starting with `/` (the launcher's fb/touch paths) are skipped; `--list-pages` and `--help` exist; an unknown name exits 2; BACK returns to the home grid. Capture: `/etc/init.d/arca-app stop`, then `/opt/games/control_panel /dev/fb0 /dev/input/event0 monitor &`, then `cat /dev/fb0` (measured on `.188`, 2026-10-06). It reaches the page only, not a state inside it.
@@ -666,7 +666,7 @@ group A does it that way and labels it.
 
 ## Audio: the generator is separate from the device
 
-(`tests/audio_gen_test.c`). The device half — ALSA via libasound, the device resolver, the GPIO12 amp — is
+(`tests/audio_gen_test.c`). The device half — ALSA via libasound, the device resolver — is
 `common/audio_out.c`, the continuous stream and **the only playback path**: `audio_init()` opens it, and
 if it fails returns -1 and the app is silent, with no fallback. `audio.c` keeps the config gate and the
 client API and **consumes `audio_gen` for everything else**. It includes no device header, so it links on
@@ -888,8 +888,8 @@ grep -rn 'open(DSP_DEVICE\|open("/dev/dsp"' --include=*.c native_apps/ | grep -v
 
 ⚠️ **`audio_out_device_path()` is the ONE home for which `/dev/dsp*` to open**, and
 `common/audio_out.c`'s opener — the only one `common/` has — resolves through it, as does ScummVM's mixer — a
-USB DAC is selectable, so a second spelling would be a seam only some apps could see. `enable_amp()`
-lives there too, for the same reason and because GPIO12 belongs to the panel speaker alone. The
+USB DAC is selectable, so a second spelling would be a seam only some apps could see. The panel speaker amp (GPIO12) is
+not driven from C: a gpio-hog in `kernel/dts/rw20.dts` holds it on from boot. The
 remaining hits are `tests/ch_test.c`, `tests/oss_diag.c`, `tests/oss_geom.c`, `tests/oss_keepalive.c`
 and `tests/oss_play.c` — standalone OSS probes with no `Audio` at all, not in `build-and-deploy.sh`,
 build lines in their own headers, and each pinned to the onboard device on purpose.

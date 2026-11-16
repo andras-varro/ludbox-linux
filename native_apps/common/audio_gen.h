@@ -8,7 +8,7 @@
  * clock, no sysfs.  That is the whole point — it is the half of `audio.c` a
  * host regression can reach (`tests/audio_gen_test.c`).
  *
- * The device half — open/configure/write/close plus the GPIO12 amp poke —
+ * The device half — open/configure/write/close —
  * stays in `audio.c`.
  *
  * Two rules this file exists to enforce:

@@ -545,17 +545,16 @@ LINKBAD=0
 BOOT_LINKS=("$BASE/root/etc/rc5.d/S28time-sync" "$BASE/root/etc/rc5.d/S29audio-enable" \
             "$BASE/root/etc/rc5.d/S99arca-app")
 LINK_NAMES="S28, S29, S99"
-# ⚠️ The usb group's two links are asserted too, but only when the group ran.
+# ⚠️ The usb group's link is asserted too, but only when the group ran.
 # --no-usb leaves them uninstalled on purpose, so an unconditional list would
 # report a failure for a deliberate omission; and leaving them out entirely was a
 # real gap — a dangling rc5.d link is skipped in SILENCE
-# at boot, which is the exact class of defect this check exists for, and these two
+# at boot, which is the exact class of defect this check exists for, and this one
 # are the only boot links this project installs that were never covered.
 case " $NO_PROV_GROUPS " in
     *" usb "*) ;;
-    *) BOOT_LINKS+=("$BASE/root/etc/rc5.d/S89xpad-modules" \
-                    "$BASE/root/etc/rc5.d/S90usb-host")
-       LINK_NAMES="$LINK_NAMES, S89, S90" ;;
+    *) BOOT_LINKS+=("$BASE/root/etc/rc5.d/S89xpad-modules")
+       LINK_NAMES="$LINK_NAMES, S89" ;;
 esac
 case " $NO_PROV_GROUPS " in
     *" bluetooth "*) ;;
@@ -602,13 +601,13 @@ echo ""
 # controller modules — so a bundle delivers it outright.
 case " $NO_PROV_GROUPS " in
     *" usb "*)
-        echo "  USB HOST MODE was skipped (--no-usb): no /etc/init.d/usb-host and no"
+        echo "  USB HOST MODE was skipped (--no-usb): no USB module loaders and no"
         echo "  controller modules. To add it later, from a machine with the ARM"
         echo "  toolchain:   cd usb_host && ./build-and-deploy.sh <ip>"
         ;;
     *)
         echo "    6. USB: plug an Xbox controller in and check it appears —"
-        echo "         /etc/init.d/usb-host status   and   lsusb"
+        echo "         lsusb   and   ls /dev/input"
         echo "       The budget is 100 mA, so a controller needs a POWERED hub."
         ;;
 esac

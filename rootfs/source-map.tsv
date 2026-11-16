@@ -14,7 +14,6 @@ p1/uEnv.txt	arca
 */libbluetooth.so*	bluez
 */bluealsa*	bluez-alsa
 */vnc_client	libvncserver
-*/devmem_write	glibc-host
 */scummvm	scummvm
 */libasound_module_*_bluealsa.so	bluez-alsa
 opt/*/*	arca

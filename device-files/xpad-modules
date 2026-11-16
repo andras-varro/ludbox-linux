@@ -1,6 +1,6 @@
 #!/bin/sh
 # Load Xbox controller kernel modules
-# Must run before S90usb-host
+# Loaded at boot (S89), alongside the other USB module loaders
 #
 # Mainline kernel: the in-tree xpad is built as a module (CONFIG_JOYSTICK_XPAD=m); modprobe
 # resolves ff-memless from modules.dep.

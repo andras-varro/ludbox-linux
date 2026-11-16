@@ -1095,18 +1095,6 @@ bool audio_out_device_is_onboard(void)
     return strcmp(audio_out_device_path(), AUDIO_DEV_ONBOARD) == 0;
 }
 
-#define GPIO12_DIRECTION  "/sys/class/gpio/gpio12/direction"
-#define GPIO12_VALUE      "/sys/class/gpio/gpio12/value"
-
-void audio_out_enable_amp(void)
-{
-    FILE *f;
-    f = fopen(GPIO12_DIRECTION, "w");
-    if (f) { fputs("out", f); fclose(f); }
-    f = fopen(GPIO12_VALUE, "w");
-    if (f) { fputs("1",   f); fclose(f); }
-}
-
 /* ── The ALSA backend ────────────────────────────────────────────────────────
  *
  * The one device backend.  Compiled only with an explicit -DAUDIO_OUT_HAVE_ALSA,
@@ -1225,12 +1213,6 @@ static int alsa_open(void *ctx, int rate_req, int channels_req,
 {
     AlsaCtx *a = (AlsaCtx *)ctx;
     int err;
-
-    /* ⚠️ GPIO12 is the TWL4030's speaker amp and belongs to card 0 alone.  Poking
-     * it while a USB DAC is the sink unmutes a speaker nothing is feeding, so it
-     * is decided from the PCM actually being opened, not done unconditionally. */
-    if (strcmp(a->name, audio_out_device_pcm(AUDIO_DEV_ONBOARD)) == 0)
-        audio_out_enable_amp();
 
     /* ⚠️ Non-blocking is not an optimisation.  A blocking write stalls for a full
      * hardware period once the queue fills, which turns every subsequent sound

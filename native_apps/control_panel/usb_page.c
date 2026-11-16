@@ -26,11 +26,15 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-/* The init script that owns USB host mode, including the MUSB driver re-probe
- * that revives a port which came up dead. The RESCAN button forks this rather
- * than writing MUSB sysfs from here — one copy of the mechanism, and it is the
- * copy that carries the warnings. */
-#define USB_HOST_INIT     "/etc/init.d/usb-host"
+/* The MUSB driver re-probe that revives a port which came up dead. The RESCAN
+ * button does it here, by writing the platform driver's unbind/bind nodes: the
+ * boot-time /dev/mem enable script this used to fork is gone with the 4.14
+ * kernel, and the 7.3.4 image enables host mode in-kernel (kernel/patches). */
+#define USB_MUSB_DRIVER   "/sys/bus/platform/drivers/musb-hdrc"
+#define USB_MUSB_DEVICE   "musb-hdrc.0.auto"
+#define USB_RECOVER_TRIES 3      /* RESCAN: one rebind is not always enough */
+#define USB_RECOVER_SETTLE_S 2   /* VBUS decays while the driver is unbound */
+#define USB_RECOVER_BIND_S   3   /* time for the bind to enumerate */
 
 #define USB_COLOR_PANEL        RGB(30, 30, 45)
 #define USB_COLOR_PANEL_BD     RGB(50, 50, 70)
@@ -63,6 +67,15 @@ static void usb_scan_bus(UsbState *s) {
     s->bus_cnt = usb_bus_scan(USB_BUS_ROOT, s->bus, USB_BUS_MAX);
 }
 
+/* Write the MUSB device name to a driver node (unbind/bind). The write can
+ * fail while the device is already unbound; that is not an error here. */
+static void usb_musb_write(const char *node) {
+    FILE *f = fopen(node, "w");
+    if (!f) return;
+    fputs(USB_MUSB_DEVICE, f);
+    fclose(f);
+}
+
 /* Bring a dead USB port back, then re-enumerate.
  *
  * ⚠️ Recovery is TWO halves and this app only ever had the second.
@@ -72,18 +85,16 @@ static void usb_scan_bus(UsbState *s) {
  * prints — "CONNECT A DEVICE AND TAP RESCAN".
  * The missing half is a MUSB driver re-probe.
  *
- * ⚠️ The rebind is NOT reimplemented here. /etc/init.d/usb-host owns it, along
- * with the retry and every warning about which sysfs writes are silent no-ops on
- * this SoC; a second copy of those paths in C is how the two drift apart. This
- * forks that script and reads its exit status — 0 means it enumerated something.
+ * ⚠️ Only the unbind/bind works: writes to musb's `mode` and `vbus` attributes
+ * are silent no-ops on this SoC (SYSTEM_ANALYSIS.md#36-usb). One rebind is not
+ * always enough, so RESCAN retries until a non-hub device enumerates.
  *
  * ⚠️ It blocks for several seconds, and a rebind invalidates every open USB fd.
  * So paint a waiting screen first (the app is single-threaded and will not
  * repaint until this returns).  The Input page's testers hold no USB fd by
  * then: each closes its nodes on the way out.
  *
- * once = a single rebind attempt (RECOVER_TRIES=1, the script's own knob)
- * instead of its default retries.  Opening the page asks for one, because it
+ * once = a single rebind attempt instead of USB_RECOVER_TRIES.  Opening the page asks for one, because it
  * runs on every opening that finds the socket empty and an empty socket
  * exhausts every attempt; RESCAN is an explicit ask and keeps the retries. */
 /* A result line.  The empty list shows it centred, where the hint goes; with
@@ -105,8 +116,8 @@ static void usb_status(UsbState *s, bool ok, const char *fmt, ...) {
 }
 
 static bool usb_recover_port(Framebuffer *fb, UsbState *s, bool once) {
-    if (access(USB_HOST_INIT, X_OK) != 0) {
-        usb_status(s, false, "USB-HOST SCRIPT NOT INSTALLED");
+    if (access(USB_MUSB_DRIVER, F_OK) != 0) {
+        usb_status(s, false, "USB DRIVER NOT LOADED");
         return false;
     }
 
@@ -119,28 +130,19 @@ static bool usb_recover_port(Framebuffer *fb, UsbState *s, bool once) {
                        "THIS TAKES A FEW SECONDS", USB_COLOR_DIM, 2);
     fb_swap(fb);
 
-    pid_t pid = fork();
-    if (pid < 0) {
-        usb_status(s, false, "FORK FAILED");
-        return false;
+    int found = 0;
+    int tries = once ? 1 : USB_RECOVER_TRIES;
+    for (int attempt = 0; attempt < tries && found == 0; attempt++) {
+        usb_musb_write(USB_MUSB_DRIVER "/unbind");
+        sleep(USB_RECOVER_SETTLE_S);
+        usb_musb_write(USB_MUSB_DRIVER "/bind");
+        sleep(USB_RECOVER_BIND_S);
+        usb_scan_bus(s);
+        found = usb_bus_peripherals(s->bus, s->bus_cnt);
     }
-    if (pid == 0) {
-        if (once) setenv("RECOVER_TRIES", "1", 1);
-        execl(USB_HOST_INIT, "usb-host", "recover", (char *)NULL);
-        _exit(127);
-    }
-
-    int status = 0;
-    while (waitpid(pid, &status, 0) < 0 && errno == EINTR)
-        ;   /* a signal must not orphan the child */
-
-    usb_scan_bus(s);
-    int found = usb_bus_peripherals(s->bus, s->bus_cnt);
 
     if (found > 0)
         usb_status(s, true, "PORT RECOVERED - %d DEVICE(S)", found);
-    else if (WIFEXITED(status) && WEXITSTATUS(status) == 127)
-        usb_status(s, false, "COULD NOT RUN USB-HOST");
     else
         usb_status(s, false, "STILL NOTHING - IS A DEVICE PLUGGED IN?");
     return found > 0;

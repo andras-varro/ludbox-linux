@@ -679,7 +679,7 @@ codec registers a capture PCM and exposes 62 mixer controls including `Analog Le
 nowhere.** Mono, one small speaker, is a hardware fact and not a driver limitation.
 
 **How to drive it.** ALSA card `rw20`, `hw:0,0` (`twl4030-hifi` ↔ `49022000.mcbsp`). OSS shim at
-`/dev/dsp`, `/dev/audio`, `/dev/mixer`. **GPIO12 must be driven HIGH to unmute the amplifier.**
+`/dev/dsp`, `/dev/audio`, `/dev/mixer`. **GPIO12 must be HIGH to unmute the amplifier; on 7.3.4 a gpio-hog in `kernel/dts/rw20.dts` holds it from boot (the sysfs export of 12 fails: global gpio base 512).**
 
 ```
 DAC1 (app rate -> 48000 SRC) -> HandsfreeL Mux (AudioL1) -> HandsfreeL Switch -\
@@ -692,7 +692,7 @@ DAC1 (app rate -> 48000 SRC) -> HandsfreeL Mux (AudioL1) -> HandsfreeL Switch -\
 | `DAC1 Digital Coarse Playback Volume` | 0..2 | 0 (0 dB) |
 | `PreDriv Playback Volume` | 0..3 | 0 = mute, 3 = +6 dB |
 
-Boot setup is `device-files/audio-enable` (→ `rc5.d/S29audio-enable`): GPIO12, the Handsfree
+Boot setup is `device-files/audio-enable` (→ `rc5.d/S29audio-enable`): the Handsfree
 controls above, **and the Predrive path** — `PreDriv Playback Volume` 3, the `PredriveL/R Mixer`
 inputs on, `DAC2` analog 4 / coarse 2. ⚠️ **Without the Predrive settings the speaker is silent, and the
 codec boots with them muted** — measured on `.188` 2026-10-11: a card with an empty `/var/lib/alsa/`
@@ -1091,15 +1091,14 @@ out to a connector on board revision `550-0204-03`. `CONFIG_USB_EHCI_HCD` and
 enabling EHCI would gain nothing — there is nowhere to plug in.** Recorded so the decision is not
 re-litigated.
 
-**Three problems stand between the vendor kernel and host mode. Hacks 1 and 2 still ship; the third
-is not solved:**
+**Three problems stood between the vendor kernel and host mode (measured on 4.14). Our 7.3.4 image enables host mode in-kernel (`kernel/patches` 0005/0006), so the runtime `/dev/mem` patch and its init script are deleted; hacks 1 and 2 are kept as the measured record, and the third is not solved:**
 
 **Hack 1 — MUSB forced to IRQ-driven PIO, patched at runtime through `/dev/mem`.** The OEM kernel has
 *both* `CONFIG_USB_INVENTRA_DMA` and `CONFIG_MUSB_PIO_ONLY` unset, so MUSB init always fails with
 `DMA controller not set` (`-ENODEV`). This is a build defect, not a version problem. The fix writes
 noop stub function pointers into the `dma_init`/`dma_exit` fields of the `omap2430_ops` struct in
 live kernel memory, forcing PIO fallback; the driver then rebinds successfully. Re-applied every
-boot by `/etc/init.d/usb-host` (S90).
+boot by `/etc/init.d/usb-host` (S90) on the vendor kernel; that script is deleted.
 
 > ⚠️ **State this the right way round: the patch makes MUSB *give up* on DMA.** It does not fix or enable
 > DMA — it installs stubs so the core falls back to interrupt-driven programmed I/O. **DMA remains
@@ -1249,7 +1248,7 @@ plugged into it enumerates nothing; re-seating an adapter revives only a port th
 ⚠️ **Plugging a USB pad re-enumerates the whole tree, so the Bluetooth dongle's `hci0` is recreated and every BT
 link drops** (measured 2026-10-01, `.188`: hub `1-1` re-found, dongle `1-1.3`). Bonds in `/var/lib/bluetooth`
 survived and the pad reconnected on its Home button once `hci0` was powered; without `/etc/bluetooth/main.conf`
-BlueZ 5.66 leaves the new adapter `Powered: no`. We ship `AutoEnable=true` ([`device-files/bluetooth-main.conf`](device-files/bluetooth-main.conf)); **measured 2026-10-01, `.188`:** after `/etc/init.d/usb-host recover`, `btusb` reloaded the `rtl8761cu` firmware and `bluetoothctl show` read `Powered: yes` with no manual step. **Boot start also works** (measured, same unit): after a reboot `/etc/init.d/bluetooth` (S91) started `bluetoothd`, the modules loaded, `hci0` was `Powered: yes`, the bonds survived, and the 8BitDo Pro 2 (X mode) reconnected on a Home press, drove `app_launcher` (which holds its event node by hot-plug) and stayed connected 4 m 39 s. ⚠️ **The operator's hub is effectively unpowered — it claims a supply and has none — and that is why a wired pad drops everything** (measured 2026-10-05, `.188`): plugging an Xbox 360 pad disconnects `usb 1-1` (the hub) and everything behind it, the BT dongle included; all re-enumerate within ~1.5 s, and the `watch` reconnect in `device-files/bluetooth` re-connects the bonded devices about a minute later. A low-power 2.4G receiver did not drop it; musb logs a VBUS error only at `KERN_DEBUG`. **Use a hub with its own working supply.**
+BlueZ 5.66 leaves the new adapter `Powered: no`. We ship `AutoEnable=true` ([`device-files/bluetooth-main.conf`](device-files/bluetooth-main.conf)); **measured 2026-10-01, `.188`:** after a musb-hdrc unbind/bind (then done by `usb-host recover`, since replaced by the Control Panel RESCAN), `btusb` reloaded the `rtl8761cu` firmware and `bluetoothctl show` read `Powered: yes` with no manual step. **Boot start also works** (measured, same unit): after a reboot `/etc/init.d/bluetooth` (S91) started `bluetoothd`, the modules loaded, `hci0` was `Powered: yes`, the bonds survived, and the 8BitDo Pro 2 (X mode) reconnected on a Home press, drove `app_launcher` (which holds its event node by hot-plug) and stayed connected 4 m 39 s. ⚠️ **The operator's hub is effectively unpowered — it claims a supply and has none — and that is why a wired pad drops everything** (measured 2026-10-05, `.188`): plugging an Xbox 360 pad disconnects `usb 1-1` (the hub) and everything behind it, the BT dongle included; all re-enumerate within ~1.5 s, and the `watch` reconnect in `device-files/bluetooth` re-connects the bonded devices about a minute later. A low-power 2.4G receiver did not drop it; musb logs a VBUS error only at `KERN_DEBUG`. **Use a hub with its own working supply.**
 
 ⚠️ **BlueALSA (and any GIO/GDBus program) fails on this device unless `DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket` is set.** `/var/run` is not a symlink to `/run` here; the vendor libdbus compiles in `/run/dbus/system_bus_socket` (the real socket) but the vendor libgio 2.62.6 compiles in `unix:path=/var/run/dbus/system_bus_socket`, which does not exist, so the daemon dies with `Couldn't obtain D-Bus connection: No such file or directory` (measured 2026-10-01, `.188`: `grep -a` on both libraries plus `ls`). The vendor libasound's external-plugin directory is `/usr/lib/alsa-lib` (compiled in, absent on stock), and its `alsa.conf` load hook reads `/etc/alsa/conf.d`, not `/usr/share/alsa/alsa.conf.d` (same measurement).
 
@@ -1267,7 +1266,7 @@ refuted, one of them in this document.
 | `echo host > $MUSB/mode` | **silent no-op** — `omap2430_ops` has no `.set_mode`, so the store reports success having done nothing |
 | `$MUSB/vbus`'s `timeout 1100 msec` | **inert** — nothing on omap2430 reads `musb->a_wait_bcon`; writing it changes the printed number and nothing else |
 | `power/control = on` (forbidding runtime PM) | **does not prevent the drop** — measured with `runtime_status` reading `active` throughout |
-| `$MUSB/mode` as a *live-port* reading | **not diagnostic of a live port** — reads `a_idle` with a pad enumerated, `js0` present and the game responding (unpatched; our patched image reads `a_host`). ⚠️ **It IS the one observable of a dead port after `VBUS_ERROR`** (measured 2026-10-01, `.188`, our image): the kernel logged `VBUS_ERROR in a_idle`, `mode` then read `b_idle`, every device stopped working, yet no disconnect was logged and `/sys/bus/usb/devices` still listed them all (stale); `usb-host recover` fixed it on attempt 1 (seen once; operator's inference: port overload, ~1100 mA declared against 500 mA, no recurrence in a day of heavy use after the load was cut). A `b_*` reading means dead whatever the device list says (`usb_port_dead()`, `native_apps/control_panel/usb_bus.c`) |
+| `$MUSB/mode` as a *live-port* reading | **not diagnostic of a live port** — reads `a_idle` with a pad enumerated, `js0` present and the game responding (unpatched; our patched image reads `a_host`). ⚠️ **It IS the one observable of a dead port after `VBUS_ERROR`** (measured 2026-10-01, `.188`, our image): the kernel logged `VBUS_ERROR in a_idle`, `mode` then read `b_idle`, every device stopped working, yet no disconnect was logged and `/sys/bus/usb/devices` still listed them all (stale); a musb-hdrc rebind (then `usb-host recover`, now the Control Panel RESCAN) fixed it on attempt 1 (seen once; operator's inference: port overload, ~1100 mA declared against 500 mA, no recurrence in a day of heavy use after the load was cut). A `b_*` reading means dead whatever the device list says (`usb_port_dead()`, `native_apps/control_panel/usb_bus.c`) |
 | `twl4030-usb/vbus` | **not a port-state reading at all** — 0444, reports `vbus_supplied` (somebody feeding *us*), so it reads `off` in the working state **and** the dead one |
 | `lsmod` → `xpad … 0` | a refcount of module *users*, not bound devices — reads `0` with a pad bound and `event1`/`js0` present |
 
@@ -1276,7 +1275,7 @@ and it sets `SESSION` **only** in `OTG_STATE_A_WAIT_BCON`, so it cannot revive a
 
 ⚠️ **Three source-derived mechanisms were applied and refuted on hardware before the mailbox guard was
 found**, the last the DTB `mode` 3 → 1 patch: the **booted tree** read back `mode = <1>`, and a pad plugged
-in after an empty-socket boot stayed dark while `usb-host recover` brought it up on attempt 1. None of the
+in after an empty-socket boot stayed dark while a musb-hdrc rebind (then `usb-host recover`) brought it up on attempt 1. None of the
 three explained how a cold port obtains a session; the guard does.
 
 **Reading the live device tree.** `/sys/firmware/devicetree/base/` is the unflattened tree as the running
@@ -1286,12 +1285,11 @@ sysfs path and `find` does not follow it. Use the `/sys/firmware/devicetree/base
 booted `mode` value was confirmed against the running kernel rather than against the decompiled
 `usb_host/original.dts`.
 
-**`/etc/init.d/usb-host recover`** does the rebind — unbind, settle `RECOVER_SETTLE` (2 s) so VBUS can
-decay below VBusValid, bind — and retries up to `RECOVER_TRIES` (3), stopping the moment a **non-hub**
-device appears and exiting non-zero on exhaustion. Plug the device in **first**. Reachable from the panel as Control Panel → USB → **RESCAN**, which forks it when a scan finds nothing **or `mode` reads `b_*`**, and by opening that page with an empty or `b_*` port (one attempt, measured 6.0 s on `.188`); measured on `.188` 2026-08-14 at ~5 s from one tap, leaving `Vbus on`, `1-1`, `event1` + `js0` and the pad playable.
+**The Control Panel USB page RESCAN** (`native_apps/control_panel/usb_page.c`, `usb_musb_write`) does the rebind itself — unbind `musb-hdrc.0.auto`, settle 2 s so VBUS can
+decay below VBusValid, bind — and retries up to `USB_RECOVER_TRIES` (3), stopping the moment a **non-hub**
+device appears. Plug the device in **first**. It runs when a scan finds nothing **or `mode` reads `b_*`**, and on opening that page with an empty or `b_*` port (one attempt, measured 6.0 s on `.188`); measured on `.188` 2026-08-14 at ~5 s from one tap, leaving `Vbus on`, `1-1`, `event1` + `js0` and the pad playable.
 ⚠️ It is not on a free-running timer: **unpatched, nothing in software can distinguish "nothing is plugged in" from "a pad is plugged into an unpowered port"** — VBUS is off either way and no connect interrupt can arrive in either — so an operator who has just plugged something in holds the one bit no poll can obtain. Nothing automatic calls it: `arcamond` only warns (`native_apps/common/usbfault.h`).
 ⚠️ **An overloaded port survives by itself; software must not touch it.** With hub plus four devices musb logs `VBUS_ERROR in a_host (91, <VBusValid)` about every 4 s and its own retry re-enumerates the hub within ~1 s each time, indefinitely; with `arcamond` stopped the port never died, and once the load was unplugged the errors stopped and the other devices stayed up. Unbinding and rebinding `musb-hdrc.0.auto` during that overload left VBUS off (`VBUS_ERROR in a_idle (90, <VBusValid)`) until power was removed; a soft reboot did not clear it [n=1, `.115`, 2026-10-31; TWL4030 keeping its state across a reboot is inferred]. So `arcamond` raises a warning from three `a_host` errors in 30 s and clears it after 30 s without one (`usbfault.h`); measured on that build under the same overload: the warning appeared after three errors, the port stayed up, and it cleared ~30 s after the load was unplugged. Measured the same day per app: the launcher, `vnc_client` and ScummVM (16 bpp) show square, sidebars and LED; a retro core (NES) shows the sidebars and LED but no square. A bonded BT pad reconnected ~20 s after the load was pulled (`device-files/bluetooth` `watch()`).
-Full technical detail, including MUSB memory addresses, the `omap2430_ops` struct layout, why `mmap()` works where `write()` does not, and the approaches that failed: [`usb_host/README.md`](usb_host/README.md).
 
 **Application-side input.** All input is evdev (`/dev/input/event0`–`event31`). Native apps use
 `native_apps/common/gamepad.c`, which abstracts touch + USB keyboard + USB mouse + Xbox pad behind
@@ -1369,7 +1367,7 @@ gpiochip508  GPMC GPIO 508+         (4 pins)
 | 23 | Touch interrupt (active low) | No (driver-owned) |
 | twl | SD card-detect | No |
 
-Currently exported: `gpio12` only.
+Currently exported: none (GPIO12 is held by a DT gpio-hog).
 
 > ⚠️ **Unclaimed ≠ usable.** The pinmux node configures only ten function groups — `backlight`,
 > `dss_dpi`, `gpmc`, `green_led`, `red_led`, `hsusb_otg`, `i2c1`, `i2c2`, `mmc1_cd`, `uart2`. Every
@@ -1502,13 +1500,13 @@ reset value, so nothing has ever driven it — and `LSR` `0x60`; parent `per_48m
 so the 16x divisor is 48e6/(16 × baud) and 57600 wants 52 (`0x34`). ⚠️ **Validate any such probe with
 the UART's own internal loopback before believing a silent radio** (`MCR` bit 4, TX→RX inside the
 module — not the vendor *XBee* loopback test above): without it a dead radio and a wrong register
-sequence produce identical output. `probes/xbee_probe.sh` does that and restores what it writes.
+sequence produce identical output.
 
 **The vendor assumed a Series 1 module, and the modules on hand are Series 1** — they are
 `XB24-ACI-001 revC` (MaxStream, 802.15.4), read off the label, which is why the vendor's settable `ATMY`
 and `ATCH` are the right command set. ⚠️ **`AP = 1` is the trap, not the series**: a module in API mode
 answers no `AT` at any rate whatever it is, so a framed `ATVR` must be swept before silence is read as a
-wiring fault. `probes/xbee_probe.sh` sweeps both, and all eight `BD` rates.
+wiring fault. Sweep both, and all eight `BD` rates.
 
 ### 3.13 Watchdogs
 

@@ -39,7 +39,7 @@ THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 Everything committed in this repository **except the files named in the next section**: the C sources
 and shared library under `native_apps/`, `vnc_client/`'s client and its renderer/input/settings, the
-ScummVM backend port under `scummvm-arca/backend-files/`, `usb_host/`'s `devmem_write.c` and Python
+ScummVM backend port under `scummvm-arca/backend-files/`, `usb_host/`'s Python
 tooling, every shell script (`arca.sh`, `deploy-all.sh`, `release.sh`, `provision.sh`, `lib/`, `rootfs/`'s scripts,
 `device-files/`, `tests/`), `kernel/`'s `build-image.sh`, `build-modules.sh` and `tools/*.c`, `uboot/BUILD.md` and `gen-mux.py`, the `.ppm`
 launcher icons, and the documentation. `kernel/dts/rw20.dts` is **not** MIT: its SPDX line says GPL-2.0-only and it includes the kernel
@@ -125,7 +125,7 @@ actually pin, because "current upstream" is not a fact anyone can check later.
 | libvterm | 0.3.3 (sha256-pinned tarball), linked statically into `terminal` | **MIT** (`LICENSE`: Copyright (c) 2008 Paul Evans) | `native_apps/build-libvterm.sh` |
 | Linux kernel | 7.3.4 upstream for our image (`kernel/patches/`); the same 7.3.4 tarball is also Buildroot's kernel-headers tree | **GPL-2.0-only** | `kernel/build-image.sh` (tarball pinned in `rootfs/package-hashes/linux-headers.hash`) |
 | glibc (on the card) | 2.41 (git snapshot `2.41-161-g5dd252cf`) — the card's `/lib/libc.so.6`, from Buildroot's internal toolchain, **soft-float EABI** (`arm-buildroot-linux-gnueabi`, loader `/lib/ld-linux.so.3`) | **LGPL-2.1-or-later** (library); GPL-2.0-or-later (programs), BSD-3-Clause, MIT parts (Buildroot `legal-info`) | `rootfs/build-rootfs.sh` |
-| glibc (linked into our binaries) | the host cross toolchain's: `native_apps` build with `arm-linux-gnueabi-gcc` (soft-float, **dynamic** against the card's glibc); `vnc_client` and `devmem_write` are **static, hard-float** (`gnueabihf`) and so embed the host toolchain's glibc, **Ubuntu `2.31-0ubuntu9.9` [unverified]**: the version comes from the plan note the source offer was written from, not from a package query of the toolchain that built the binaries; `rootfs/make-source-offer.sh` pins the `.dsc` of that version (`UBUNTU_GLIBC_DSC_SHA256`) and ships it | LGPL-2.1-or-later | the distribution's cross toolchains |
+| glibc (linked into our binaries) | the host cross toolchain's: `native_apps` build with `arm-linux-gnueabi-gcc` (soft-float, **dynamic** against the card's glibc); `vnc_client` is **static, hard-float** (`gnueabihf`) and so embed the host toolchain's glibc, **Ubuntu `2.31-0ubuntu9.9` [unverified]**: the version comes from the plan note the source offer was written from, not from a package query of the toolchain that built the binaries; `rootfs/make-source-offer.sh` pins the `.dsc` of that version (`UBUNTU_GLIBC_DSC_SHA256`) and ships it | LGPL-2.1-or-later | the distribution's cross toolchains |
 
 ⚠️ **These are cross-compiled from source on purpose, not vendored.** This host cannot do armhf
 multiarch, so each component builds its own copies
@@ -225,7 +225,7 @@ release published from it is available**, because the offer is honoured for the 
 | the Bluetooth `.ko`s under `/lib/modules/7.3.4` | **GPL-2.0-only** | Kernel modules. ⚠️ **Written source offer required**, in `NOTICE`: upstream Linux 7.3.4 plus `kernel/patches/` (`0011` modifies `btusb.c`) and `kernel/config-7.3.4`. |
 | our `uImage-system` (`kernel/build-image.sh`), `cy8ctmg120_ts.ko`, `ca8_ibe.ko` | **GPL-2.0-only** | Not in a bundle; they enter a card image (`make-card-image.sh`). Source: upstream Linux 7.3.4 + `kernel/patches/`, `kernel/dts/`, `kernel/drivers/` and the full config `kernel/config-7.3.4` (committed). The offer tar below carries the source; ⚠️ **no written offer text ships with an image yet** (see the gaps below). |
 | `rtl8761cu_{fw,config}.bin` | **Realtek redistributable firmware licence** (row above) | Staged unmodified with `LICENCE.rtlwifi_firmware.txt` beside them on the device; the notice is reproduced in `NOTICE`. |
-| `devmem_write`, the `native_apps` games and tools, `app_launcher` | MIT. `devmem_write` is statically linked against glibc (LGPL-2.1-or-later); the `native_apps` binaries link the device's own glibc and `libasound` dynamically; `terminal` also links libvterm (MIT) statically, its copyright notice reproduced in `NOTICE` | LGPL-2.1 §6 relinking: the objects and this repository are what a relink needs. |
+| the `native_apps` games and tools, `app_launcher` | MIT. The `native_apps` binaries link the device's own glibc and `libasound` dynamically; `terminal` also links libvterm (MIT) statically, its copyright notice reproduced in `NOTICE` | LGPL-2.1 §6 relinking: the objects and this repository are what a relink needs. |
 | `/opt/sound/fx_*.wav` (eleven sound effects) | **Not for commercial use** + **attribution to ElevenLabs (`elevenlabs.io`) required** (free account — see above) | ⚠️ **The one artifact that makes a bundle non-commercial.** A commercial redistribution must remove or replace them; every game falls back to its note tables without them, so removal breaks nothing. Stated in `NOTICE`. |
 | `/opt/sound/<stem><n>-mono.wav` (every music bed) | Royalty-free, commercial use permitted (musely.ai — see above) | None. No attribution required. Not this project's composition; stated in `NOTICE` anyway so a bundle carries its own provenance, along with the fact that removing any bed is safe. |
 
@@ -238,7 +238,7 @@ util-linux) must pass on the complete corresponding source, or a written offer f
 **GPL-3.0** programs (bash, readline, the GCC runtime pieces under their exception, ScummVM) carry the
 equivalent §6; **LGPL-2.1** libraries (glibc, avahi, alsa-lib, GLib, kmod, libxcrypt, libdaemon, sbc)
 additionally require that the recipient be able to relink — shared libraries on the card satisfy that by
-construction, static ones need the objects (see the `devmem_write` row). Licence texts and notices must
+construction, static ones need the objects. Licence texts and notices must
 travel with the binaries (BSD, MIT, Apache-2.0, zlib and the OpenSSH family require the notice).
 
 What the repository **does** today: the kernel image's source is upstream Linux 7.3.4 plus the committed

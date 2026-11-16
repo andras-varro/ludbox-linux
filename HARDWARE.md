@@ -172,8 +172,8 @@ pin 2 read 0 V in all three states, where a pullup of tens of kΩ against a 10 M
 would also beat the pullup — is excluded on the same unit: **unpowered, pin 2 to pin 10 is DC-open.**
 ⚠️ It does not *look* open at first. An ohmmeter reports a different value on every range and then reads
 infinite when the leads are lifted and replaced, because its test current is charging a capacitance rather
-than finding a resistance; the reconnect is the tell. `probes/xbee_socket_continuity.sh` drives both
-directions from the SoC end, so the BGA never needs probing, and its `padup`/`paddown` steps are the
+than finding a resistance; the reconnect is the tell. A script that drove both
+directions from the SoC end (since removed) meant the BGA never needed probing; its pin-2 steps were the
 meter-only pin-2 test. **[n=1]** — whether the other two units share the open net is unmeasured.
 
 **`P4` — the RS-232 console. Pinout verified by continuity:**

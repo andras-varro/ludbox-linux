@@ -565,8 +565,6 @@ plays its effects and carries on.
 
 usb_host
 --------
-`devmem_write` is this project's own code (MIT).
-
 This bundle ships no kernel modules: the Xbox pad, USB audio, USB storage and Bluetooth
 drivers are modules of the kernel image built by `kernel/build-image.sh`, and the image is
 not part of this bundle.  WRITTEN OFFER FOR SOURCE for that kernel (GPL-2.0-only): the

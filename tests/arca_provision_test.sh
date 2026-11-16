@@ -586,9 +586,9 @@ assert_eq 0 "$DIFFER" "F6 every installed file is byte-identical to its device-f
 
 assert_eq "$NINST" "$(grep -c '^mkdir -p' "$FW/ssh.calls" || :)" \
     "F7 a mkdir -p preceded every copy"
-# The directory that may not exist on a unit — /etc/init.d does, so it proves nothing.
+# A directory outside /etc/init.d (which proves nothing: it always exists): the only other one in the base+usb plan.
 NODIR=0
-grep -q "mkdir -p '/usr/local/bin'" "$FW/ssh.calls" || NODIR=1
+grep -q "mkdir -p '/usr/sbin'" "$FW/ssh.calls" || NODIR=1
 assert_eq 0 "$NODIR" "F8 the directory a unit may lack is created first"
 
 # ── F9-F11: a missing source is a refusal, before the device is touched ──────
@@ -626,7 +626,7 @@ fi
 
 # ── F12b: the bluetooth component's group ─────────────────────────────────────
 # bluetooth/build-and-deploy.sh compiles its own group the same way. Its boot link
-# must come out of the plan (S91, after S90usb-host: the dongle is on that port) and
+# must come out of the plan (S91) and
 # every one of its verbatim files must be copied.
 BPLAN="$FW/btplan"
 if arca_provision_plan_component "$RULES" bluetooth > "$BPLAN" 2>/dev/null; then
@@ -648,7 +648,7 @@ else
     bad "F12b input.conf sets [General] ClassicBondedOnly=true (HID only from bonded devices)"
 fi
 assert_eq "../init.d/bluetooth" "$(awk -F'\t' '$1 == "link" && $3 == "/etc/rc5.d/S91bluetooth" {print $4}' "$BPLAN")" \
-    "F12b the bluetooth group links S91bluetooth after S90usb-host"
+    "F12b the bluetooth group links S91bluetooth"
 
 # ── F12c: which bonded devices the init script reconnects ─────────────────────
 # BlueZ 5.66 initiates no BR/EDR connection when an adapter powers up, so the init

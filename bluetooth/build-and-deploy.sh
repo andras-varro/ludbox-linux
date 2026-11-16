@@ -259,7 +259,7 @@ ssh "$DEVICE" "/etc/init.d/bluetooth start" || warn "start reported a failure"
 ssh "$DEVICE" "sleep 2; /etc/init.d/bluetooth status; ls -l /etc/rc5.d/S91bluetooth"
 echo ""
 echo "  No adapter listed? The dongle needs USB host mode (usb_host component):"
-echo "    ssh $DEVICE '/etc/init.d/usb-host status; lsusb'"
+echo "    ssh $DEVICE 'lsusb'"
 
 _ELAPSED=$(( $(date +%s) - _START_SECONDS ))
 echo ""

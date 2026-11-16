@@ -124,7 +124,7 @@ esac
 # userspace is soft-float (loader /lib/ld-linux.so.3), so a hard-float binary can never load
 # its libc, libasound or libstdc++ — so native_apps and ScummVM build with it. The gnueabihf
 # set stays for vnc_client's hard-float -static build, usb_host's kernel modules and
-# devmem_write, and the objdump check-arm-safe.sh and commission-offline.sh run.
+# the objdump check-arm-safe.sh and commission-offline.sh run.
 #
 # Added after a clean ubuntu:20.04 container build (Dockerfile) found them missing; the
 # consumer of each: gawk — tests/doc_check.sh uses {1,6} regex intervals, which mawk

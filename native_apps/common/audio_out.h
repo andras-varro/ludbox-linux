@@ -573,18 +573,9 @@ int  audio_out_choice_next(int shown, bool usb_present, bool bt_present);
 const char *audio_out_device_pcm(const char *path);
 
 /** Whether `audio_out_device_path()` currently resolves to the panel speaker.
- *  ⚠️ GPIO12 belongs to that device alone — see `audio_out_enable_amp()`. */
+ *  The speaker amplifier (GPIO12) is switched on from boot by a gpio-hog in
+ *  `kernel/dts/rw20.dts`; no client unmutes it. */
 bool        audio_out_device_is_onboard(void);
-
-/**
- * Drive GPIO12 HIGH to unmute the TWL4030 speaker amplifier (SPKR1).
- *
- * ⚠️ **Guard every call on `audio_out_device_is_onboard()`.** This is card 0's
- * amp and means nothing to a USB DAC; poking it while the DAC is the sink
- * unmutes a speaker nothing is feeding. Exposed rather than kept private
- * because `audio.c` had a byte-identical copy of it.
- */
-void        audio_out_enable_amp(void);
 
 /**
  * Drain what is queued — bounded — then close.  Safe on a struct that was never

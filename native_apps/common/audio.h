@@ -7,14 +7,13 @@
  * Hardware path:
  *   TWL4030 HiFi DAC  →  HandsfreeL/R class-D amp  →  SPKR1
  *   Kernel interface:  ALSA through libasound, `plughw:N,0` (card N is /dev/dspN)
- *   Amp enable:        GPIO12 sysfs (active HIGH)
+ *   Amp enable:        a DT gpio-hog (GPIO12, active HIGH) from boot; no app drives it
  *
  * Prerequisites:
  *   /etc/init.d/audio-enable must have run to configure the ALSA
  *   HandsfreeL/R mixer path.  This is installed automatically by
  *   build-and-deploy.sh with the 'permanent' flag.
- *   audio_init() still drives GPIO12 directly so it works even when
- *   called from a dev shell before the boot service is active.
+ *   The amp needs no call from here: kernel/dts/rw20.dts holds it on from boot.
  *
  * Typical use:
  *   Audio audio;
@@ -269,7 +268,7 @@ typedef struct {
 /**
  * Initialise audio subsystem.
  *  - Honours the `audio_enabled` config setting
- *  - Opens the continuous stream (`audio_out_open_default()`: GPIO12, the
+ *  - Opens the continuous stream (`audio_out_open_default()`: the
  *    device, the backend and the read-back all live there) and puts the mix bus
  *    on it as the stream's fill, so the struct is ready to pump on return
  * Returns 0 on success, -1 if hardware unavailable (game may continue).
@@ -282,7 +281,7 @@ int  audio_init(Audio *audio);
  * For a hardware *test* that must be able to drive the speaker even when the
  * user has switched audio off in config — `control_panel` has
  * such a page, and it and a since-deleted settings tool both used to hand-roll the open, the three ioctls
- * and the GPIO12 poke themselves.  That duplication is what this exists to
+ * themselves.  That duplication is what this exists to
  * remove; the bypass itself is deliberate, because audio_init() would make the
  * test obey the very setting it exists to test.
  *
