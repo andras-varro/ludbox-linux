@@ -149,6 +149,7 @@ core|cmd|gcc|build-essential
 core|cmd|make|build-essential
 core|cmd|cmake|cmake
 core|cmd|wget|wget
+core|cmd|curl|curl
 core|cmd|tar|tar
 core|cmd|bzip2|bzip2
 core|cmd|dash|dash

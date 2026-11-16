@@ -13,6 +13,7 @@
 #include <asm/assembler.h>
 
 	.arm
+	.arch armv7-a
 	.arch_extension sec
 
 ENTRY(ca8_ibe_rom_write_actlr)
