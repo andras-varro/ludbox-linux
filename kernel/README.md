@@ -102,6 +102,7 @@ Dropped from the 4.14 set: the twelve TCP patches (upstream in 7.3.4 [grep]), `m
 | Retro, ScummVM, Jellyfin, VNC | operator confirmed |
 | sshd | ⚠️ the rootfs `sshd-session` was killed by its own seccomp sandbox on syscall 403 (`clock_gettime64`) under 7.3.4 when built against 4.14 headers; the unit ran a hand-patched binary. The build now uses 7.3.4 headers and keeps the OpenSSH patch; **measured by the operator: root ssh login works on the v3.0.0 card** (see `rootfs/CLAUDE.md`) |
 | Suspend and power management | not supported, not tested (operator, 2026-11-16); shutdown measured: backlight, side LEDs, NIC and USB go off |
+| SD card-detect | `kernel/dts/rw20.dts` has `cd-gpios = <&gpio4 31 GPIO_ACTIVE_LOW>` (gpio_127, the vendor value) while the muxed pad is `sdmmc1_dat4` = gpio_126; whether the switch is read is **not measured [unverified]** and does not matter: the card is behind the enclosure and the unit boots from it (operator, 2026-11-17) |
 
 ## Reading the vendor kernel
 

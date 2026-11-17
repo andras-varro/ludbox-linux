@@ -55,10 +55,6 @@ why it has not been seen.
 Fix is the rule the other two follow: cap first, lay out from the capped number, and make the number
 appear somewhere once it exceeds what is drawn — a heart plus `x10`, or a raised cap.
 
-### B69. Does the SD slot's card-detect switch work, and is it on the pad the DT names? — open, unverified
-
-`kernel/dts/rw20.dts:571` has `cd-gpios = <&gpio4 31 GPIO_ACTIVE_LOW>` (gpio_127, the vendor's value, kept) while the pad it muxes as a GPIO (`rw20.dts:286`) is `sdmmc1_dat4` = gpio_126. **[unverified]** Whether the switch is read at all has not been checked; the card boots, so nothing observed depends on it. **Done when** a card insert and removal is observed in the kernel log, or the property is shown to be inert.
-
 ### B76. A plain `reboot` can hang in the shutdown scripts, and `provision.sh` reboots that way — open, seen once on `.115`
 
 **Measured 2026-10-31 on `.115`, n=1:** two `reboot` calls over SSH left the unit up; `/etc/init.d/rc 0` was asleep in
