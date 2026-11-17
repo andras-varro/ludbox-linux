@@ -69,19 +69,6 @@ message now reads `configured as A device timeout: devctl %02x after %lld ms[ (i
 so the next occurrence measures itself; read the devctl value and elapsed ms there before reproducing, then
 decide whether the wait needs the PHY/glue resumed first or the loop is simply too short.
 
-### B47. Lockdep reports recursive L2CAP socket locking on the first incoming BT connection — open, seen twice (2026-10-01, 2026-10-05)
-
-**Measured on `.188`:** at the 8BitDo pad's first incoming connection after boot the kernel printed `WARNING:
-possible recursive locking detected` — `sk_lock-AF_BLUETOOTH-BTPROTO_L2CAP` taken twice, `l2cap_sock_new_connection_cb`
-→ `bt_accept_enqueue` → `lock_sock_nested`, from `l2cap_connect` / `hci_rx_work`. It did not reappear on the later
-reconnect. **Second sighting 2026-10-05, ~60 s after boot, during incoming BT connections:** the same splat in
-`hci_rx_work` → `l2cap_recv_frame` → `l2cap_connect` → `l2cap_sock_new_connection_cb` → `bt_accept_enqueue` →
-`lock_sock_nested`, held `conn->chan_lock`, `chan->lock#2/2` and `sk_lock-AF_BLUETOOTH-BTPROTO_L2CAP`, on the former
-4.14.52 image (lockdep was `=y` there, measured 2026-10-12 on `.115`). **Measured in `kernel/config-7.3.4`:** `PROVE_LOCKING`,
-`DEBUG_LOCK_ALLOC`, `DEBUG_MUTEXES` and `DEBUG_SPINLOCK` are all off, so the 7.3.4 image cannot print this splat; whether the
-parent/child L2CAP socket annotation is in 7.3.4 is **[unverified]**. **Done when** the item is dropped as moot, or a lockdep
-build of 7.3.4 is shown to splat and the annotation is read.
-
 ### B69. Does the SD slot's card-detect switch work, and is it on the pad the DT names? — open, unverified
 
 `kernel/dts/rw20.dts:571` has `cd-gpios = <&gpio4 31 GPIO_ACTIVE_LOW>` (gpio_127, the vendor's value, kept) while the pad it muxes as a GPIO (`rw20.dts:286`) is `sdmmc1_dat4` = gpio_126. **[unverified]** Whether the switch is read at all has not been checked; the card boots, so nothing observed depends on it. **Done when** a card insert and removal is observed in the kernel log, or the property is shown to be inert.
