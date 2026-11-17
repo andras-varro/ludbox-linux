@@ -37,24 +37,6 @@ hedge, and a verdict is a weaker answer than a description, so say which one the
 
 ## Correctness and verification
 
-### B30. `brick_breaker` hides lives past the ninth — open, latent, cosmetic
-
-Three games draw a capped HUD lives row and each caps it differently:
-
-| Game | Shape | Verdict |
-|---|---|---|
-| `frogger.c:1269` | `lives_shown = min(lives, 5)`, then lays out from `lives_shown * LIFE_ICON_PITCH` | correct |
-| `platformer.c:1541` | lays out from the capped number and draws one icon plus `x10` past the cap | correct |
-| `brick_breaker.c:1398` | `for (i < game.lives && i < 9)`, each heart at a fixed anchor minus `i * 14` | **silently truncates** |
-
-The extra-life power-up at `brick_breaker.c:765` does `game.lives++` with no cap, so a tenth life and
-every one after it is **invisible**: the HUD reads nine whether you hold nine or fourteen, and losing one
-appears to change nothing. Cosmetic, never a crash, and it needs a power-up-heavy run to reach, which is
-why it has not been seen.
-
-Fix is the rule the other two follow: cap first, lay out from the capped number, and make the number
-appear somewhere once it exceeds what is drawn — a heart plus `x10`, or a raised cap.
-
 ### B76. A plain `reboot` can hang in the shutdown scripts, and `provision.sh` reboots that way — open, seen once on `.115`
 
 **Measured 2026-10-31 on `.115`, n=1:** two `reboot` calls over SSH left the unit up; `/etc/init.d/rc 0` was asleep in

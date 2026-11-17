@@ -1395,13 +1395,20 @@ static void draw_hud(void) {
 
     /* Hearts for lives - right-aligned against the exit button. A heart spans
      * hx-4 .. hx+9, so the rightmost one's hx is hud_right - 9. */
-    for (int i = 0; i < game.lives && i < 9; i++) {
+    int hearts_shown = game.lives > 5 ? 1 : game.lives;
+    for (int i = 0; i < hearts_shown; i++) {
         int hx = hud_right - 9 - i * 14;
         int hy = SCREEN_SAFE_TOP + 22;
         /* Smaller hearts */
         fb_fill_circle(&fb, hx, hy + 2, 4, HEART_COLOR);
         fb_fill_circle(&fb, hx + 5, hy + 2, 4, HEART_COLOR);
         fb_fill_rect(&fb, hx - 3, hy + 2, 11, 5, HEART_COLOR);
+    }
+    /* Past five lives one heart plus a count, so a tenth life is never invisible. */
+    if (game.lives > 5) {
+        char lv[16];
+        snprintf(lv, sizeof(lv), "x%d", game.lives);
+        fb_draw_text(&fb, hud_right - 9 - 6 - (int)strlen(lv) * 6, SCREEN_SAFE_TOP + 22, lv, HEART_COLOR, 1);
     }
 
     /* Active effect indicators — one row under the level, still in the header
