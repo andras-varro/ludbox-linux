@@ -72,6 +72,7 @@ A full build was not run by this repo's gate; the patch set applying in order to
 | `0009-omapdss-scale-mode-param` | the DSS overlay scaler tables blur 2x upscales; adds `omapdss.scale_mode` | applies; the scaler is deliberately unused ([§3.2](../SYSTEM_ANALYSIS.md#32-display)) |
 | `0010-omapfb-mmap-map-count-double-inc` | `omapfb_mmap()` increments `rg->map_count` twice and `munmap` decrements once, so after any fb mmap `OMAP-FB SETUP_MEM` returns `EBUSY` and the retro cores run audio only | measured on `.188`: retro runs, `626x480` overlay, 61 fps (operator saw the picture) |
 | `0011-btusb-asus-1bf6-realtek` | the ASUS USB-BT500 dongle `0b05:1bf6` (RTL8761CU) is not in btusb's table, so it never reaches `btrtl`; 7.3.4's `btrtl` already handles the chip | applies to v7.3.4 after 0001-0010; `btusb` ID only, firmware from `3rdparty/realtek/bluetooth/` [dry-run only, not tested on a unit] |
+| `0012-logo-arca-clut224` | replaces the Tux boot logo (`logo_linux_clut224.ppm`) with the Arca cuckoo, 80x80, flat colours (218) on black; `CONFIG_LOGO_LINUX_CLUT224` is the only logo enabled (MONO and VGA16 are off) | applies to v7.3.4 after 0001-0011 (`patch --dry-run`); text PPM, no binary ; operator saw it on the panel of a unit booting it (2026-11-17) |
 
 Dropped from the 4.14 set: the twelve TCP patches (upstream in 7.3.4 [grep]), `musb-omap2430-set-vbus-report` (its hook is gone) and
 `leds-pwm-dt-brightness` (the DT's `default-state`/`default-brightness` replace it).

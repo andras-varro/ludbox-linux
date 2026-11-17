@@ -74,7 +74,7 @@ Userspace, except the kernel-image entry.
 
 ### F170. 7.3.4 image: what is still open — open
 
-The image is `kernel/build-image.sh` with `kernel/config-7.3.4` and `kernel/patches/`; its state is the table in [`kernel/README.md`](kernel/README.md#driver-state-on-734). Left, none measured on 7.3.4 yet: **(a) boot logo** — render `distro/arca-logo.svg` to a ≤224-colour PPM and add a `kernel/patches/` entry replacing `drivers/video/logo/logo_linux_clut224.ppm` (`LOGO_LINUX_CLUT224` is enabled), padded or full-frame because the logo draws at the top-left with no centring **[inferred from 4.14 `fbmem.c`, not re-read on 7.3.4]**; **(b) USB gadget** — `CONFIG_USB_GADGET` is off (measured in the config), and `PREEMPT`/`HZ=250` are off too, never shown to limit anything. A kernel change is proven by booting it; take a verified p1 backup of the *running* image first ([`#4-boot-chain-and-recovery`](SYSTEM_ANALYSIS.md#4-boot-chain-and-recovery)). **Done when** each lettered item is measured on a unit or dropped.
+The image is `kernel/build-image.sh` with `kernel/config-7.3.4` and `kernel/patches/`; its state is the table in [`kernel/README.md`](kernel/README.md#driver-state-on-734). Left: **USB gadget** — `CONFIG_USB_GADGET` is off (measured in the config), and `PREEMPT`/`HZ=250` are off too, never shown to limit anything. A kernel change is proven by booting it; take a verified p1 backup of the *running* image first ([`#4-boot-chain-and-recovery`](SYSTEM_ANALYSIS.md#4-boot-chain-and-recovery)). **Done when** it is measured on a unit or dropped.
 
 ### F137. Users other than root — open, operator wish 2026-10-09, not designed
 
