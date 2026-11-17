@@ -55,20 +55,6 @@ why it has not been seen.
 Fix is the rule the other two follow: cap first, lay out from the capped number, and make the number
 appear somewhere once it exceeds what is drawn — a heart plus `x10`, or a raised cap.
 
-### B41. An adapter replug can print `configured as A device timeout` on our image — open, seen once 2026-09-29
-
-**Measured on `.188`** (uImage md5 `f3b446c6b2d731e0d118583cada62c36`, the ID-ground patch booted):
-`musb-hdrc musb-hdrc.0.auto: configured as A device timeout` was printed once, at one adapter replug —
-the one following a spell in which the root hub had been runtime-suspended; the earlier replug did not
-print it. Enumeration succeeded anyway. The line comes from `omap2430_musb_set_vbus()`, which waits for
-DEVCTL `BDEVICE` to clear — now reached on every ID-ground, since the patch calls it there. **Read from
-source, not timed on the device:** upstream's loop is 100 × `mdelay(5)`, so it gave up after ~505 ms, before
-the 1 s jiffies deadline it appeared to have, then carried on as on success. Console error lines are defects
-even when harmless. **[inferred]** that the prior root-hub suspend is the difference; n=1. **Watch:** the
-message now reads `configured as A device timeout: devctl %02x after %lld ms[ (irq)]` (`kernel/patches/musb-omap2430-set-vbus-report.patch`),
-so the next occurrence measures itself; read the devctl value and elapsed ms there before reproducing, then
-decide whether the wait needs the PHY/glue resumed first or the loop is simply too short.
-
 ### B69. Does the SD slot's card-detect switch work, and is it on the pad the DT names? — open, unverified
 
 `kernel/dts/rw20.dts:571` has `cd-gpios = <&gpio4 31 GPIO_ACTIVE_LOW>` (gpio_127, the vendor's value, kept) while the pad it muxes as a GPIO (`rw20.dts:286`) is `sdmmc1_dat4` = gpio_126. **[unverified]** Whether the switch is read at all has not been checked; the card boots, so nothing observed depends on it. **Done when** a card insert and removal is observed in the kernel log, or the property is shown to be inert.
