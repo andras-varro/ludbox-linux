@@ -435,7 +435,7 @@ echo " Bundle"
 echo "────────────────────────────────────────"
 
 {
-    echo "tag=${TAG:-untagged}"
+    echo "tag=${TAG:-$(git -C "$SCRIPT_DIR" describe --tags --exact-match HEAD 2>/dev/null || echo untagged)}"
     echo "built=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
     echo "commit=${GIT_REV}${GIT_DIRTY}"
     echo "components=$(arca_bundle_components "$OUT_ABS" | tr '\n' ' ')"

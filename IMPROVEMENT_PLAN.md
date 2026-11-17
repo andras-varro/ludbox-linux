@@ -66,6 +66,8 @@ launcher state, or `provision.sh` detects a reboot that did not happen. **Not re
 booted, during `rc 5`, two `reboot`s at once). Next capture before `reboot -f`: `/proc/<rc pid>/stack`, `stty -F /dev/console -a`
 and `stty -F /dev/ttyO1 -a`; `rc` echoes to the console (serial `ttyO1` + `tty0`) before each K script [inferred first write].
 
+**Read 2026-11-17 (our rootfs, from source; nothing run):** `reboot` is the BusyBox applet and init runs `::shutdown:/etc/init.d/rc 0` (`rootfs/board/arca/overlay/etc/inittab`); `rc` echoes each K link to its inherited stdout, the console, which is `console=ttyO1` plus `console=tty0` on the **measured** running cmdline of `.188`, and no K link has a timeout. So the unbounded console write exists here too. **Measured: the `timeout` applet is absent on `.188`** (`busybox --list`), so a `timeout 30 rc 0` wrapper is not available. **Next:** redirect `rc 0` output to `/dev/kmsg` in `inittab` (a write there cannot block on a tty) and verify on a unit; make `provision.sh` read `/proc/sys/kernel/random/boot_id` before its `reboot` and fall back to `sync; reboot -f` if SSH answers with the same id after ~90 s.
+
 ## Features
 
 Userspace, except the kernel-image entry.

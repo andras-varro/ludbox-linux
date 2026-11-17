@@ -513,7 +513,8 @@ echo " Rebooting"
 echo "════════════════════════════════════════"
 
 info "Rebooting device..."
-ssh "$DEVICE" reboot || true
+arca_provision_reboot "$DEVICE" \
+    || err "the unit did not reboot, so this update is NOT active — power-cycle it, then re-run: $0 $DEVICE_IP"
 ok "Device is rebooting"
 
 echo ""

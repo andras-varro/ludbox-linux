@@ -31,7 +31,7 @@ wsl.exe -e bash -lc "cd /mnt/c/work/roomwizard && kernel/build-image.sh --out <s
 a fresh tree, applies `patches/`, stages the initramfs, copies `config-7.3.4`, forces `LOCALVERSION_AUTO` off and runs `olddefconfig`,
 then asserts the symbols the board cannot do without (`FB_OMAP2`, `MUSB_HDRC`, `MODULES`, `JOYSTICK_XPAD=m`, ...) and
 that `DRM_OMAP` is off. `dropped-symbols.txt` lists every vendor `usb_host/device_config` symbol the new config
-lacks, mostly renames; **reviewing it is pending [unverified]**. The wrap is
+lacks, mostly renames; **reviewed 2026-11-17 against the 7.3.4 Kconfig, no feature lost** (card `rw20` and `/dev/dsp` present on a unit running 7.3.4, **measured**; unadopted, low value: `CPU_FREQ_STAT`, `FB_MODE_HELPERS`). The wrap is
 `cat zImage board.dtb > zImage-with-dtb` then `mkimage -A arm -O linux -T kernel -C none -a 0x80008000 -e 0x80008000`.
 A full build was not run by this repo's gate; the patch set applying in order to the pinned tarball was **measured**
 (a fresh extraction, `patch -p1` per patch in sorted order, 2026-11-15).

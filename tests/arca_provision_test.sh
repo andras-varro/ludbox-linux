@@ -744,6 +744,71 @@ expect "$(printf 'install\t0755\t/usr/sbin/arca-backup\tdevice-files/arca-backup
 
 # ═══════════════════════════════════════════════════════════════════════════
 echo ""
+echo "I. provision.sh's reboot is verified by boot_id, with a forced fallback"
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# A plain `reboot` was once seen to hang in the shutdown scripts and leave the unit
+# up, so an update silently did not take effect. arca_provision_reboot reads
+# /proc/sys/kernel/random/boot_id first, reboots, and treats "ssh answers with the
+# SAME id" as no reboot: it then runs `sync; reboot -f`, and if that fails too it
+# returns non-zero.
+#
+# The stub ssh logs the command (its LAST argument) and keeps the unit's boot id in
+# $RB/id. Switches: $RB/noid = the id file is unreadable (older rootfs),
+# $RB/plainhangs = a plain `reboot` leaves the id unchanged, $RB/forcefails = so does
+# `reboot -f`. Every case drives the real function; the waits are zeroed so each
+# phase is exactly one look.
+
+RB="$TMP/reboot"; mkdir -p "$RB/bin"
+cat > "$RB/bin/ssh" <<'STUB'
+#!/bin/sh
+for last; do :; done
+cat > /dev/null
+echo "$last" >> "$STUBRB/calls"
+case "$last" in
+    *boot_id*) [ -e "$STUBRB/noid" ] && exit 1; cat "$STUBRB/id" ;;
+    reboot)      [ -e "$STUBRB/plainhangs" ] || echo "new-$$" > "$STUBRB/id" ;;
+    "sync; reboot -f") [ -e "$STUBRB/forcefails" ] || echo "new-$$" > "$STUBRB/id" ;;
+esac
+exit 0
+STUB
+chmod +x "$RB/bin/ssh"
+export STUBRB="$RB"
+rb_run() {   # rb_run <switch...> ; leaves $RB/out, sets RB_RC
+    rm -f "$RB/noid" "$RB/plainhangs" "$RB/forcefails"; echo "boot-0" > "$RB/id"; : > "$RB/calls"
+    local s; for s in "$@"; do : > "$RB/$s"; done
+    ARCA_SSH="$RB/bin/ssh" ARCA_REBOOT_WAIT=0 ARCA_REBOOT_WAIT2=0 ARCA_REBOOT_POLL=0 \
+        arca_provision_reboot root@fake > "$RB/out" 2>&1
+    RB_RC=$?
+}
+rb_forced() { grep -c '^sync; reboot -f$' "$RB/calls" || :; }
+rb_plain()  { grep -c '^reboot$' "$RB/calls" || :; }
+
+rb_run
+assert_eq "0:1:0" "$RB_RC:$(rb_plain):$(rb_forced)" \
+    "I1 the id changes after a plain reboot: success, one reboot, no forced fallback"
+rb_run plainhangs
+assert_eq "0:1:1" "$RB_RC:$(rb_plain):$(rb_forced)" \
+    "I2 the same id after a plain reboot: the forced fallback runs and succeeds"
+if grep -q 'reboot -f' "$RB/out"; then ok "I2b the fallback is announced"; else bad "I2b the fallback is announced"; fi
+rb_run plainhangs forcefails
+if [ "$RB_RC" != 0 ] && [ "$(rb_forced)" = 1 ] && grep -qi 'not active' "$RB/out"; then
+    ok "I3 the fallback also fails: non-zero and a warning that the update is not active"
+else
+    bad "I3 the fallback also fails: non-zero and a warning that the update is not active (rc=$RB_RC)"
+fi
+rb_run noid plainhangs
+if [ "$RB_RC" = 0 ] && [ "$(rb_plain)" = 1 ] && [ "$(rb_forced)" = 0 ] && grep -qi 'skip' "$RB/out"; then
+    ok "I4 an unreadable id: reboot still issued, verification skipped with a note, no fallback"
+else
+    bad "I4 an unreadable id: reboot still issued, verification skipped with a note, no fallback (rc=$RB_RC)"
+fi
+# Negative control: I1 and I2 differ ONLY in the stub's plainhangs switch, so a
+# function that always fell back (or never did) fails exactly one of them. I3 differs
+# from I2 only in forcefails, so a function that ignored the second look fails I3.
+
+# ═══════════════════════════════════════════════════════════════════════════
+echo ""
 echo "════════════════════════════════════════"
 TOTAL=$((PASS + FAIL))
 echo "  $PASS passed, $FAIL failed, $TOTAL total"

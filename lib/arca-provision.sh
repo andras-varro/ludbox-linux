@@ -503,6 +503,59 @@ arca_provision_push_installs() {
 }
 
 # ---------------------------------------------------------------------------
+# arca_provision_reboot <target>
+#
+# Reboot the unit and VERIFY it went down. A plain `reboot` was once seen to hang in
+# the shutdown scripts and leave the unit up, so an update silently did not take
+# effect. The proof is /proc/sys/kernel/random/boot_id: read before, and after the
+# reboot either ssh stops answering (the unit is going down) or the id differs.
+# ssh still answering with the SAME id after $ARCA_REBOOT_WAIT s (90) means the
+# reboot hung: `sync; reboot -f` is then issued and waited on for $ARCA_REBOOT_WAIT2 s
+# (default 150, a cold boot is slow). Still the same id: return 1, the update is not
+# active. An unreadable id (an older rootfs) skips the check; the plain reboot is
+# still issued. $ARCA_REBOOT_POLL (3) is the gap between looks; every one is
+# overridable so the regression runs in no time. $ARCA_SSH replaces ssh.
+#
+# Messages go through the caller's info/warn when it has them. There is deliberately
+# no `ok`: the caller prints it, and a test harness defines an `ok` of its own.
+# ---------------------------------------------------------------------------
+arca_provision_reboot() {
+    local target="$1" sshc="${ARCA_SSH:-ssh}"
+    local before now rc
+    local w1="${ARCA_REBOOT_WAIT:-90}" w2="${ARCA_REBOOT_WAIT2:-150}" poll="${ARCA_REBOOT_POLL:-3}"
+    [ -n "$target" ] || { echo "arca_provision_reboot: no target given" >&2; return 1; }
+
+    _apr_say() { if declare -F "$1" >/dev/null; then "$@"; else shift; echo "  $*"; fi; }
+    _apr_id()  { $sshc -o ConnectTimeout=5 "$target" 'cat /proc/sys/kernel/random/boot_id' </dev/null 2>/dev/null; }
+    # _apr_wait <seconds>: 0 once the unit is down or has a new id, 1 on timeout.
+    # One look always happens, so a zero wait is a single look.
+    _apr_wait() {
+        local deadline=$((SECONDS + $1))
+        while :; do
+            now=$(_apr_id); rc=$?
+            if [ "$rc" != 0 ] || [ -z "$now" ] || [ "$now" != "$before" ]; then return 0; fi
+            [ "$SECONDS" -ge "$deadline" ] && return 1
+            sleep "$poll"
+        done
+    }
+
+    before=$(_apr_id) || before=""
+    $sshc "$target" reboot </dev/null || true
+    if [ -z "$before" ]; then
+        _apr_say info "boot_id unreadable on $target: skipping the check that the reboot happened"
+        return 0
+    fi
+    _apr_wait "$w1" && return 0
+
+    _apr_say warn "$target still up with the same boot_id: the plain reboot hung. Forcing: sync; reboot -f"
+    $sshc "$target" 'sync; reboot -f' </dev/null || true
+    _apr_wait "$w2" && return 0
+
+    _apr_say warn "$target did NOT reboot (same boot_id): the update is not active. Power-cycle the unit."
+    return 1
+}
+
+# ---------------------------------------------------------------------------
 # arca_provision_online_script
 #
 # Echo the LIVE executor as text, for `ssh <target> sh -s -- /tmp/arca-provision-plan`.
