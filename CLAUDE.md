@@ -142,8 +142,8 @@ installed **only** by the provision rules — never by a component script. All o
 `lib/CLAUDE.md` (last section) and `rootfs/CLAUDE.md`.
 
 **Components** (each a subdir with a `build-and-deploy.sh`): `native_apps` (C games + launcher +
-tools), `scummvm-arca` (ScummVM backend port), `vnc_client`, `usb_host` (USB host-mode
-enablement + Xbox controller modules), `bluetooth` (BlueZ, BT modules, dongle firmware, boot start).
+tools), `scummvm-arca` (ScummVM backend port), `vnc_client`, `usb_host` (installs the `usb`
+device-file group: pad, USB-audio and USB-storage module loaders, no reboot), `bluetooth` (BlueZ, BT modules, dongle firmware, boot start).
 
 **Toolchain:** `./setup-build-env.sh` is the one home for the host package set — it probes what is
 missing, prints the exact `apt` line before running it, and `--scummvm` also clones the gitignored
