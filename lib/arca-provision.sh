@@ -505,7 +505,7 @@ arca_provision_push_installs() {
 # ---------------------------------------------------------------------------
 # arca_provision_reboot <target>
 #
-# Reboot the unit and VERIFY it went down. A plain `reboot` was once seen to hang in
+# Reboot the unit and VERIFY it went down. A plain `reboot` was seen to hang once (n=1, a vendor-era unit, 2026-10-31; never reproduced, and not seen in many reboots of 7.3.4 units since) in
 # the shutdown scripts and leave the unit up, so an update silently did not take
 # effect. The proof is /proc/sys/kernel/random/boot_id: read before, and after the
 # reboot either ssh stops answering (the unit is going down) or the id differs.

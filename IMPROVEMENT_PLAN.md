@@ -37,28 +37,13 @@ hedge, and a verdict is a weaker answer than a description, so say which one the
 
 ## Correctness and verification
 
-### B76. A plain `reboot` can hang in the shutdown scripts, and `provision.sh` reboots that way — open, seen once on `.115`
-
-**Measured 2026-10-31 on `.115`, n=1:** two `reboot` calls over SSH left the unit up; `/etc/init.d/rc 0` was asleep in
-`wait_woken` with fd 0–2 on `/dev/console` (a VT, 100×30, not the serial port), so the K scripts never ran (`sshd` still up).
-**Inferred:** a write to the console blocked. `sync; reboot -f` booted. `provision.sh` ends with a plain `ssh … reboot`,
-so an update can silently not take effect. **Next:** reproduce, read which K script or `rc` line writes, and why a VT write
-blocks (console scrolled-lock? `fbcon` blanked?). **Done when** a plain `reboot` reboots `.115` five times in a row from the
-launcher state, or `provision.sh` detects a reboot that did not happen. **Not reproduced** in 4 tries the same day (idle, just
-booted, during `rc 5`, two `reboot`s at once). Next capture before `reboot -f`: `/proc/<rc pid>/stack`, `stty -F /dev/console -a`
-and `stty -F /dev/ttyO1 -a`; `rc` echoes to the console (serial `ttyO1` + `tty0`) before each K script [inferred first write].
-
-**Read 2026-11-17 (our rootfs, from source; nothing run):** `reboot` is the BusyBox applet and init runs `::shutdown:/etc/init.d/rc 0` (`rootfs/board/arca/overlay/etc/inittab`); `rc` echoes each K link to its inherited stdout, the console, which is `console=ttyO1` plus `console=tty0` on the **measured** running cmdline of `.188`, and no K link has a timeout. So the unbounded console write exists here too. **Measured: the `timeout` applet is absent on `.188`** (`busybox --list`), so a `timeout 30 rc 0` wrapper is not available. **Next:** redirect `rc 0` output to `/dev/kmsg` in `inittab` (a write there cannot block on a tty) and verify on a unit; make `provision.sh` read `/proc/sys/kernel/random/boot_id` before its `reboot` and fall back to `sync; reboot -f` if SSH answers with the same id after ~90 s.
+No open bugs.
 
 ## Features
 
-Userspace, except the kernel-image entry.
+Userspace.
 
 ---
-
-### F170. 7.3.4 image: what is still open — open
-
-The image is `kernel/build-image.sh` with `kernel/config-7.3.4` and `kernel/patches/`; its state is the table in [`kernel/README.md`](kernel/README.md#driver-state-on-734). Left: **USB gadget** — `CONFIG_USB_GADGET` is off (measured in the config), and `PREEMPT`/`HZ=250` are off too, never shown to limit anything. A kernel change is proven by booting it; take a verified p1 backup of the *running* image first ([`#4-boot-chain-and-recovery`](SYSTEM_ANALYSIS.md#4-boot-chain-and-recovery)). **Done when** it is measured on a unit or dropped.
 
 ### F137. Users other than root — open, operator wish 2026-10-09, not designed
 
