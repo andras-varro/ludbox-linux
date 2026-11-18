@@ -99,7 +99,7 @@ Dropped from the 4.14 set: the twelve TCP patches (upstream in 7.3.4 [grep]), `m
 | Touch | module `cy8ctmg120_ts.ko`, **loaded at boot** by `device-files/touch-module` from `/lib/modules/$(uname -r)/extra`; operator confirmed touch. ⚠️ **`rmmod` then `insmod` fails** (`irq: type mismatch`, `no IRQ in the DT node`): reboot, never reload. The only source change from 4.14 is the `probe` signature |
 | USB host | works incl. hot-plug and empty-socket boot (patches 0005, 0006) |
 | Bluetooth, USB audio, AX88179 | load as modules from the same build (`CONFIG_UHID=m` and `uhid` in `device-files/bluetooth` for BlueZ's `/dev/uhid` input; BlueZ 5.66 default, from memory [unverified]); BT reconnect, A2DP, USB audio and a controller worked (operator). `bluetoothd` died once with no trace (cause unknown, **[inferred]** a crash on link loss); the `bluetooth` script now restarts it |
-| Xbox pad | `xpad`, `ff-memless`, `joydev` are `=m` in `config-7.3.4`; modprobe on the unit **not tested live** [unverified] |
+| Xbox pad | `xpad`, `ff-memless`, `joydev` are `=m` in `config-7.3.4`; **measured by the operator 2026-11-17**: a pad works in the Input Pad Tester on a unit running 7.3.4 |
 | Retro, ScummVM, Jellyfin, VNC | operator confirmed |
 | sshd | ⚠️ the rootfs `sshd-session` was killed by its own seccomp sandbox on syscall 403 (`clock_gettime64`) under 7.3.4 when built against 4.14 headers; the unit ran a hand-patched binary. The build now uses 7.3.4 headers and keeps the OpenSSH patch; **measured by the operator: root ssh login works on the v3.0.0 card** (see `rootfs/CLAUDE.md`) |
 | Suspend and power management | not supported, not tested (operator, 2026-11-16); shutdown measured: backlight, side LEDs, NIC and USB go off |
