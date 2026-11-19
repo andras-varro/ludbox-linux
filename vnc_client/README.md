@@ -58,7 +58,7 @@ Produces `vnc_client_stripped` (~870 KB statically linked binary).
 ### Deploy
 
 ```bash
-make deploy DEVICE_IP=192.168.50.53
+make deploy DEVICE_IP=192.0.2.20
 ```
 
 This copies the binary and config file to `/opt/vnc_client/` on the device.
@@ -66,7 +66,7 @@ This copies the binary and config file to `/opt/vnc_client/` on the device.
 ### Run
 
 ```bash
-ssh root@192.168.50.53 '/opt/vnc_client/vnc_client'
+ssh root@192.0.2.20 '/opt/vnc_client/vnc_client'
 ```
 
 ---
@@ -83,7 +83,7 @@ Settings are loaded in this order (later overrides earlier):
 
 ```ini
 # /opt/vnc_client/vnc_client.conf
-host = 192.168.50.56
+host = 192.0.2.1
 port = 5900
 password = CHANGEME
 encodings = tight zrle copyrect hextile zlib raw
@@ -135,7 +135,7 @@ Options:
   --help, -h        Show help
 ```
 
-Legacy positional syntax still works: `vnc_client 192.168.50.56 5900`
+Legacy positional syntax still works: `vnc_client 192.0.2.1 5900`
 
 ### Compile-Time Settings (config.h)
 
@@ -152,7 +152,7 @@ Legacy positional syntax still works: `vnc_client 192.168.50.56 5900`
 ## Architecture
 
 ```
-RPi3 VNC Server (192.168.50.56:5900)
+RPi3 VNC Server (192.0.2.1:5900)
          │ RFB Protocol (Tight encoding)
          ▼
     LibVNCClient (decode)
@@ -243,22 +243,22 @@ To run the setup script remotely from your workstation:
 ### Usage
 
     # Remote setup from workstation (recommended):
-    ./setup-vnc-viewer.sh --remote pi@192.168.50.121 install
+    ./setup-vnc-viewer.sh --remote pi@192.0.2.10 install
 
     # Local setup (run directly on the viewer Pi):
     ./setup-vnc-viewer.sh install
 
     # Custom VNC server address:
-    ./setup-vnc-viewer.sh --remote pi@192.168.50.121 --server 10.0.0.5 --port 5900 install
+    ./setup-vnc-viewer.sh --remote pi@192.0.2.10 --server 10.0.0.5 --port 5900 install
 
     # Skip nightly reboot cron job:
-    ./setup-vnc-viewer.sh --remote pi@192.168.50.121 --no-reboot-cron install
+    ./setup-vnc-viewer.sh --remote pi@192.0.2.10 --no-reboot-cron install
 
     # Check current setup:
-    ./setup-vnc-viewer.sh --remote pi@192.168.50.121 verify
+    ./setup-vnc-viewer.sh --remote pi@192.0.2.10 verify
 
     # Remove viewer setup:
-    ./setup-vnc-viewer.sh --remote pi@192.168.50.121 uninstall
+    ./setup-vnc-viewer.sh --remote pi@192.0.2.10 uninstall
 
 The script prompts for the VNC password interactively. It is stored in
 Remmina's encrypted format — never saved in plaintext.

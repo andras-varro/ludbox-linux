@@ -83,7 +83,7 @@ app_pids() {
 # Print the PID of every running respawn wrapper, matched on its command line.
 #
 # `pidof -x` and `killall respawn.sh` are NOT usable here: this busybox (1.37, measured
-# on 192.168.50.115 2026-10-19) has no `pidof -x` - it prints "invalid option" and exits
+# on a test unit 2026-10-19) has no `pidof -x` - it prints "invalid option" and exits
 # 1, which every guard read as "no wrapper is running".  So `start` never saw an existing
 # wrapper (a second loop appeared, and the pidfile now named only that one), and `stop`
 # never reached its orphan sweep (the first loop survived, restarted app_launcher, and the

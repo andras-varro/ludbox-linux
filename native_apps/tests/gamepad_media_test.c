@@ -78,7 +78,7 @@ static void fresh(GamepadManager *gm, int *fd) {
 int main(void) {
     /* classification */
     InputCaps c = caps_new(); add_keys(&c, AVRCP, N(AVRCP));
-    CHECK(input_classify(&c, "Echo Dot-2MF (AVRCP)") == INPUT_KIND_MEDIA);
+    CHECK(input_classify(&c, "Smart Speaker (AVRCP)") == INPUT_KIND_MEDIA);
     CHECK(!input_caps_is_keyboard(&c));
     InputCaps kb = caps_new(); add_keys(&kb, LETTERS, N(LETTERS)); add_keys(&kb, AVRCP, N(AVRCP));
     CHECK(input_classify(&kb, "kbd with media keys") == INPUT_KIND_KEYBOARD);

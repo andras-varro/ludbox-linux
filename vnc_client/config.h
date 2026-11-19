@@ -18,7 +18,7 @@ typedef struct VNCConfig {
 } VNCConfig;
 
 // VNC Server Configuration (compile-time defaults, overridden by config file)
-#define VNC_DEFAULT_HOST "192.168.50.56"
+#define VNC_DEFAULT_HOST "192.0.2.1"
 #define VNC_DEFAULT_PORT 5900
 #define VNC_DEFAULT_PASSWORD ""
 #define VNC_DEFAULT_CONTENT_FULL 0

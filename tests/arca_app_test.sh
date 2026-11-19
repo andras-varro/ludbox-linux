@@ -13,7 +13,7 @@
 #
 #   A  start leaves exactly one respawn wrapper
 #   B  a second start leaves still exactly one (busybox pidof has no -x, so the old guard
-#      never fired: measured on 192.168.50.115 as two wrapper loops after one deploy)
+#      never fired: measured on a test unit as two wrapper loops after one deploy)
 #   C  stop leaves no wrapper, and nothing restarts the app afterwards
 #   D  stop also reaches a wrapper the pidfile does not name (an orphan of an earlier start)
 #

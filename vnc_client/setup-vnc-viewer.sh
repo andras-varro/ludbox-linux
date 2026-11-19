@@ -19,15 +19,15 @@
 #   ./setup-vnc-viewer.sh install
 #
 #   # Remote (from workstation):
-#   ./setup-vnc-viewer.sh --remote pi@192.168.50.121 install
+#   ./setup-vnc-viewer.sh --remote pi@192.0.2.10 install
 #
 #   # Custom server:
-#   ./setup-vnc-viewer.sh --remote pi@192.168.50.121 --server 192.168.50.56 --port 5900 install
+#   ./setup-vnc-viewer.sh --remote pi@192.0.2.10 --server 192.0.2.1 --port 5900 install
 
 set -euo pipefail
 
 # ── Defaults ────────────────────────────────────────────────────────────────
-VNC_SERVER="192.168.50.56"
+VNC_SERVER="192.0.2.1"
 VNC_PORT="5900"
 VNC_PASSWORD="changeme"
 REMOTE_HOST=""
@@ -58,8 +58,8 @@ Actions:
   uninstall        Remove Remmina config, autostart, desktop shortcut
 
 Options:
-  --remote HOST    Run on a remote Pi via SSH (e.g., --remote pi@192.168.50.121)
-  --server IP      VNC server IP (default: 192.168.50.56)
+  --remote HOST    Run on a remote Pi via SSH (e.g., --remote pi@192.0.2.10)
+  --server IP      VNC server IP (default: 192.0.2.1)
   --port PORT      VNC server port (default: 5900)
   --password PW    VNC password (prompted if not given, NEVER saved to disk in plaintext)
   --no-reboot-cron Skip nightly reboot cron job setup
