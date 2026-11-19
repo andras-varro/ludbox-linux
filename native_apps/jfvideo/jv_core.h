@@ -236,6 +236,8 @@ long jv_core_position(const JvCore *c);
  *  PLAYPAUSE toggles, STOP is the overlay STOP, FFWD / REWIND are one JV_EV_SEEK_STEP (`*arg` = +1 / -1; arg may be NULL).  NEXT and PREV
  *  are ignored (the player has no item to step to).  Nothing but the PLAYER screen with a film playing or paused acts. */
 JvEventType jv_media_event(InputMedia act, JvPlayState st, JvScreen scr, int *arg);
+/** Whether the screen must stay lit: a film is PLAYING (it gets no touches, so the idle timer would blank it mid-film).  Paused, fetching and idle blank as normal. */
+bool jv_keeps_screen_on(JvPlayState st);
 /** The list view of the screen showing (scroll top and cursor row), so a push can remember where to come back to. */
 void jv_note_view(JvCore *c, int top, int cursor);
 /** True when the PLAYER screen is up. */

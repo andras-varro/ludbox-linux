@@ -65,6 +65,8 @@ void jv_core_init(JvCore *c, const char *conf_path, const char *reuse_path, cons
 long jv_core_position(const JvCore *c) { return c->seek_pending ? c->seek_target_ms : c->pos_ms; }
 bool jv_core_playing(const JvCore *c) { return c->screen == JV_SCR_PLAYER; }
 
+bool jv_keeps_screen_on(JvPlayState st) { return st == JV_PLAY_PLAYING; }
+
 JvEventType jv_media_event(InputMedia act, JvPlayState st, JvScreen scr, int *arg)
 {
     if (arg) *arg = 0;

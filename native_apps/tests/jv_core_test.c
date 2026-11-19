@@ -14,6 +14,7 @@
 #include <string.h>
 #include <unistd.h>
 #include "jv_core.h"
+#include "blank_decide.h"
 
 static int checks, fails;
 #define CHECK(c, ...) do { checks++; if (!(c)) { fails++; printf("FAIL line %d: ", __LINE__); \
@@ -749,6 +750,28 @@ static void test_last_tracks_on_detail(void)
     CHECK(audio_pos_index() == want_a && core.sel_sub == -1, "recorded 'subtitles off' is applied too");
 }
 
+/* Screen blanking while a film runs: the loop passes enabled = !jv_keeps_screen_on(play_state) to hw_blank_set_enabled(), so this
+ * drives the library's own blank_decide() with that flag.  A film gets no touches, so its idle time passes the timeout. */
+static void test_keep_awake(void)
+{
+    const long long idle = 3600LL * 1000;   /* an hour without input, far past any choice */
+    const int mins = BLANK_DEFAULT_MINUTES;
+    struct { JvPlayState st; bool blanks; const char *name; } t[] = {
+        { JV_PLAY_PLAYING,  false, "playing stays lit" },
+        { JV_PLAY_PAUSED,   true,  "paused blanks" },
+        { JV_PLAY_FETCHING, true,  "fetching blanks" },
+        { JV_PLAY_IDLE,     true,  "idle blanks" },
+    };
+    for (unsigned i = 0; i < sizeof t / sizeof t[0]; i++) {
+        BlankAction a = blank_decide(idle, mins, false, false, !jv_keeps_screen_on(t[i].st));
+        CHECK((a == BLANK_DO_BLANK) == t[i].blanks, "%s", t[i].name);
+    }
+    /* a dark panel is restored when playback starts (enabled=false wakes it) */
+    CHECK(blank_decide(0, mins, true, false, !jv_keeps_screen_on(JV_PLAY_PLAYING)) == BLANK_DO_WAKE, "playing wakes a dark panel");
+    /* a session that was already short of the timeout is unaffected */
+    CHECK(blank_decide(1000, mins, false, false, !jv_keeps_screen_on(JV_PLAY_IDLE)) == BLANK_NONE, "idle not yet due");
+}
+
 int main(void)
 {
     snprintf(dir, sizeof dir, "/tmp/jvcoreXXXXXX");
@@ -775,6 +798,7 @@ int main(void)
     test_last_leaving();
     test_last_resume();
     test_last_tracks_on_detail();
+    test_keep_awake();
     unlink(own); unlink(other); rmdir(dir);
     printf("jv_core_test: %d checks, %d failed\n", checks, fails);
     return fails ? 1 : 0;

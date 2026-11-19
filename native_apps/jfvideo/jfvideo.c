@@ -398,6 +398,7 @@ int main(int argc, char *argv[])
     InputState in;
     memset(&in, 0, sizeof in);
     bool first = true;
+    bool keep_awake = false;   /* hw_blank_set_enabled(false) is in force */
 
     while (running) {
         uint32_t now = get_time_ms();
@@ -471,6 +472,16 @@ int main(int argc, char *argv[])
             jf_wipe(&evq[i].password, sizeof evq[i].password);
         }
         evq_n = 0;
+
+        {   /* A film gets no touches, so the library's idle timer would blank it mid-film: opt out while one is PLAYING.  Paused,
+             * fetching and idle blank as usual.  The idle clock is restarted on the way back, or the first poll would blank at once. */
+            bool keep = jv_keeps_screen_on(core.play_state);
+            if (keep != keep_awake) {
+                if (!keep) hw_blank_keepalive();
+                hw_blank_set_enabled(!keep);
+                keep_awake = keep;
+            }
+        }
         PROF_MARK(3);
 
         /* The picture owns the front buffer while it plays (the video writes fb->buffer; the UI draws in the back
@@ -543,6 +554,7 @@ int main(int argc, char *argv[])
         q.type = JV_EV_QUIT;
         step_event(&q, (long long)get_time_ms());
     }
+    if (keep_awake) hw_blank_set_enabled(true);
     player_stop();
     if (audio_ok) {
         for (int i = 0; i < 20; i++) { audio_pump(&audio); usleep(16667); }
