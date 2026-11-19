@@ -603,6 +603,9 @@ static bool main_menu(void)
     int e_alarm = start_menu_add_action(&m, l);
     int e_timer = start_menu_add_action(&m, "TIMER");
     int e_dim = start_menu_add_action(&m, dim_label(dl, sizeof dl));
+    char dg[24];
+    snprintf(dg, sizeof dg, "DIGITS: %s", clock_digits_name(g_set.digits));
+    int e_digits = start_menu_add_action(&m, dg);
     int e_back = start_menu_add_action(&m, "BACK TO CLOCK");
     int e_exit = start_menu_add_action(&m, "EXIT");
     start_menu_select(&m, e_back, get_time_ms());
@@ -621,6 +624,10 @@ static bool main_menu(void)
             if (dim_dialog()) break;
             if (clock_ringing(&g_state)) return true;
             dim_label(m.entries[e_dim].label, sizeof m.entries[e_dim].label);
+        } else if (r == e_digits) {
+            g_set.digits = g_set.digits == CLOCK_DIGITS_TEXT ? CLOCK_DIGITS_SEG7 : CLOCK_DIGITS_TEXT;
+            settings_save();
+            snprintf(m.entries[e_digits].label, sizeof m.entries[e_digits].label, "DIGITS: %s", clock_digits_name(g_set.digits));
         } else if (r == e_timer) {
             if (timer_menu()) break;
         }
@@ -692,6 +699,33 @@ static Seg7Face g_big, g_small;   /* lit digits 0-9 and colon, rendered once at 
 
 static struct { int x, y, w, h; } g_sec;   /* where draw_main put the seconds; w == 0 until it has */
 static int g_sec_space = 6;
+static ClockTextMetrics g_tm;   /* layout of the TEXT style, set by draw_main */
+#define TEXT_SEC_COLOR RGB(170, 170, 170)
+
+/* The one place the main-screen digits are drawn, in either style (g_set.digits): `big` is the HH:MM face, else the seconds. */
+static int digits_width(const char *s, bool big)
+{
+    if (g_set.digits == CLOCK_DIGITS_TEXT) {
+        int sc = big ? g_tm.big_scale : g_tm.small_scale;
+        return text_measure_width(s, sc) - sc;      /* the advance includes one blank column after the last glyph */
+    }
+    return seg7_text_width(big ? &g_big : &g_small, s, big ? 12 : g_sec_space);
+}
+
+static int digits_height(bool big)
+{
+    if (g_set.digits == CLOCK_DIGITS_TEXT) return big ? g_tm.big_h : g_tm.small_h;
+    return big ? g_big.h : g_small.h;
+}
+
+static void digits_draw(const char *s, bool big, int x, int y)
+{
+    Framebuffer *fb = &g_dev.fb;
+    if (g_set.digits == CLOCK_DIGITS_TEXT)
+        fb_draw_text(fb, x, y, s, big ? COLOR_WHITE : TEXT_SEC_COLOR, big ? g_tm.big_scale : g_tm.small_scale);
+    else
+        seg7_draw_text(fb->back_buffer, (int)fb->width, (int)fb->height, big ? &g_big : &g_small, s, x, y, big ? 12 : g_sec_space);
+}
 
 /* A tick of the seconds alone: the back buffer still holds the rest of the screen, so only the
  * seconds box is cleared, redrawn and presented (a full redraw costs about 6 ms of CPU a second). */
@@ -699,7 +733,7 @@ static void draw_seconds(const char *ss)
 {
     Framebuffer *fb = &g_dev.fb;
     fb_fill_rect(fb, g_sec.x, g_sec.y, g_sec.w, g_sec.h, COLOR_BLACK);
-    seg7_draw_text(fb->back_buffer, (int)fb->width, (int)fb->height, &g_small, ss, g_sec.x, g_sec.y, g_sec_space);
+    digits_draw(ss, false, g_sec.x, g_sec.y);
 }
 
 static void draw_main(const ClockTime *t, const char *status)
@@ -710,18 +744,19 @@ static void draw_main(const ClockTime *t, const char *status)
     clock_fmt_seconds(ss, sizeof ss, t);
     clock_fmt_date(dt, sizeof dt, t);
     const char *ap = clock_fmt_ampm(t, g_h24);
-    int bsp = 12, ssp = g_sec_space;
-    int wb = seg7_text_width(&g_big, hm, bsp), ws = seg7_text_width(&g_small, ss, ssp);
+    clock_text_metrics(SCREEN_VISIBLE_WIDTH, 5, &g_tm);
+    int wb = digits_width(hm, true), ws = digits_width(ss, false);
     int gap = 22;
     int total = wb + gap + ws;
     int x = SCREEN_VISIBLE_LEFT + (SCREEN_VISIBLE_WIDTH - total) / 2;
     int y = SCREEN_VISIBLE_TOP + 46;
-    int bigh = g_big.h;
+    int bigh = g_tm.block_h;    /* both styles reserve the 7-seg face's height, so everything below stays put */
+    int by = y + (bigh - digits_height(true)) / 2;      /* the block's top: the digits are centred in the reserved height */
     fb_clear(fb, COLOR_BLACK);
-    seg7_draw_text(fb->back_buffer, (int)fb->width, (int)fb->height, &g_big, hm, x, y, bsp);
-    int sx = x + wb + gap, sy = y + bigh - g_small.h;
-    seg7_draw_text(fb->back_buffer, (int)fb->width, (int)fb->height, &g_small, ss, sx, sy, ssp);
-    g_sec.x = sx; g_sec.y = sy; g_sec.w = ws; g_sec.h = g_small.h;
+    digits_draw(hm, true, x, by);
+    int sx = x + wb + gap, sy = by + digits_height(true) - digits_height(false);
+    digits_draw(ss, false, sx, sy);
+    g_sec.x = sx; g_sec.y = sy; g_sec.w = ws; g_sec.h = digits_height(false);
     if (ap[0]) fb_draw_text(fb, sx, sy - text_measure_height(5) - 12, ap, RGB(255, 200, 60), 5);
     centered(dt, y + bigh + 30, 5, RGB(120, 200, 255));
     if (status[0]) centered(status, y + bigh + 30 + text_measure_height(5) + 24, 3, RGB(110, 230, 120));

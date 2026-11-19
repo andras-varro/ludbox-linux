@@ -38,6 +38,7 @@ typedef struct {
 
 /* ---- settings ---- */
 enum { CLOCK_DIM_OFF = 0, CLOCK_DIM_ON = 1, CLOCK_DIM_SCHEDULE = 2 };
+enum { CLOCK_DIGITS_SEG7 = 0, CLOCK_DIGITS_TEXT = 1 };
 typedef struct {
     bool alarm_on;
     int  alarm_min;         /* minute of the day, 0-1439 */
@@ -48,7 +49,16 @@ typedef struct {
     int  ring_s;            /* 10-600: a ring stops by itself after this long */
     int  pom_work, pom_break, pom_long;   /* minutes, 1-180 / 1-60 / 1-60 */
     int  pom_every;         /* 2-10 */
+    int  digits;            /* CLOCK_DIGITS_SEG7 (default) or CLOCK_DIGITS_TEXT: the main screen's digit style; file key "digits=seg7|text" */
 } ClockSettings;
+
+/* Digit-style layout (pure).  SEG7 uses the fixed faces clock.c builds; TEXT draws the shared 5x7 bitmap font at an integer
+ * scale chosen to fit `avail_w` (the visible width) for `nchars` big characters ("12:05" = 5) plus the seconds beside them.
+ * block_h is the height both styles reserve (the 7-seg face is 216 px) so the date line below does not move;
+ * big_h/small_h are the ink heights, and the caller centres the text block in block_h. */
+typedef struct { int big_scale, small_scale, big_h, small_h, gap, block_h; } ClockTextMetrics;
+void clock_text_metrics(int avail_w, int nchars, ClockTextMetrics *m);
+const char *clock_digits_name(int digits);   /* "7-SEG" or "TEXT", for the menu label */
 
 void clock_settings_defaults(ClockSettings *s);
 /* Lenient: unknown keys, comments, lines without '=' and bad values are skipped (the field keeps its

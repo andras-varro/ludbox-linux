@@ -316,7 +316,7 @@ int main(void)
     { char o[512]; clock_settings_serialise(&r, o, sizeof o); CHECK(strstr(o, "dim_mode=1\n") && !strstr(o, "dim_on")); }
 
     /* round trip, including a non-default set */
-    ClockSettings w = { true, 23 * 60 + 59, CLOCK_DIM_ON, 0, 12 * 60 + 5, 77, 15, 120, 45, 2, 12, 5 };
+    ClockSettings w = { true, 23 * 60 + 59, CLOCK_DIM_ON, 0, 12 * 60 + 5, 77, 15, 120, 45, 2, 12, 5, CLOCK_DIGITS_SEG7 };
     char file[512];
     int n = clock_settings_serialise(&w, file, sizeof file);
     CHECK(n > 0 && (size_t)n == strlen(file));
@@ -337,6 +337,42 @@ int main(void)
     clock_settings_serialise(&r2, again, sizeof again);
     CHECK(!strcmp(file, again));                            /* defaults survive a round trip too */
     CHECK(clock_settings_serialise(&w, file, 20) == -1);
+
+    /* ---- digit style: default, file key, layout ---- */
+    {
+        ClockSettings d, p;
+        char buf[512];
+        clock_settings_defaults(&d);
+        CHECK(d.digits == CLOCK_DIGITS_SEG7);               /* existing units keep the 7-segment look */
+        clock_settings_parse(&d, "digits=text\n");
+        CHECK(d.digits == CLOCK_DIGITS_TEXT);
+        clock_settings_parse(&d, "digits=bogus\n");
+        CHECK(d.digits == CLOCK_DIGITS_TEXT);               /* a bad value keeps the current one */
+        clock_settings_parse(&d, "digits=seg7\n");
+        CHECK(d.digits == CLOCK_DIGITS_SEG7);
+        clock_settings_defaults(&d);
+        clock_settings_parse(&d, "alarm_on=1\nsnooze_min=5\n");   /* an old file with no digits key */
+        CHECK(d.digits == CLOCK_DIGITS_SEG7 && d.snooze_min == 5);
+        d.digits = CLOCK_DIGITS_TEXT;
+        clock_settings_serialise(&d, buf, sizeof buf);
+        CHECK(strstr(buf, "digits=text\n") != NULL);
+        clock_settings_defaults(&p);
+        clock_settings_parse(&p, buf);
+        CHECK(p.digits == CLOCK_DIGITS_TEXT);
+        CHECK(!strcmp(clock_digits_name(CLOCK_DIGITS_TEXT), "TEXT") && !strcmp(clock_digits_name(CLOCK_DIGITS_SEG7), "7-SEG"));
+
+        ClockTextMetrics m;
+        clock_text_metrics(800, 5, &m);                     /* 5 big glyphs + gap + 2 small must fit the width */
+        CHECK(m.big_scale >= 12 && m.small_scale >= 1 && m.small_scale < m.big_scale);
+        CHECK(5 * 6 * m.big_scale + m.gap + 2 * 6 * m.small_scale <= 800);
+        CHECK(m.big_h == 7 * m.big_scale && m.small_h == 7 * m.small_scale && m.big_h <= m.block_h);
+        CHECK(m.block_h == 216);
+        ClockTextMetrics n;
+        clock_text_metrics(480, 5, &n);                     /* portrait width: still fits, smaller */
+        CHECK(n.big_scale < m.big_scale && 5 * 6 * n.big_scale + n.gap + 2 * 6 * n.small_scale <= 480);
+        clock_text_metrics(10, 5, &n);
+        CHECK(n.big_scale == 1 && n.small_scale == 1);      /* never zero */
+    }
 
     printf(fails ? "clock_core_test: %d FAILED\n" : "clock_core_test: all passed\n", fails);
     return fails ? 1 : 0;

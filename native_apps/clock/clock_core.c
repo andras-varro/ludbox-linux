@@ -27,6 +27,7 @@ void clock_settings_defaults(ClockSettings *s)
     s->pom_break = CLOCK_DEF_POM_BREAK;
     s->pom_long = CLOCK_DEF_POM_LONG;
     s->pom_every = CLOCK_DEF_POM_EVERY;
+    s->digits = CLOCK_DIGITS_SEG7;
 }
 
 /* "HH:MM" exactly -> minute of the day, or -1. */
@@ -65,6 +66,7 @@ static void apply(ClockSettings *s, const char *key, const char *val)
     else if (!strcmp(key, "pom_break")) { if (parse_int(val, &v)) s->pom_break = clampi(v, 1, 60); }
     else if (!strcmp(key, "pom_long")) { if (parse_int(val, &v)) s->pom_long = clampi(v, 1, 60); }
     else if (!strcmp(key, "pom_every")) { if (parse_int(val, &v)) s->pom_every = clampi(v, 2, 10); }
+    else if (!strcmp(key, "digits")) { if (!strcmp(val, "text")) s->digits = CLOCK_DIGITS_TEXT; else if (!strcmp(val, "seg7")) s->digits = CLOCK_DIGITS_SEG7; }
 }
 
 void clock_settings_parse(ClockSettings *s, const char *text)
@@ -95,10 +97,11 @@ int clock_settings_serialise(const ClockSettings *s, char *out, size_t n)
 {
     int w = snprintf(out, n,
         "alarm_on=%d\nalarm=%02d:%02d\ndim_mode=%d\ndim_start=%02d:%02d\ndim_end=%02d:%02d\ndim_level=%d\n"
-        "snooze_min=%d\nring_s=%d\npom_work=%d\npom_break=%d\npom_long=%d\npom_every=%d\n",
+        "snooze_min=%d\nring_s=%d\npom_work=%d\npom_break=%d\npom_long=%d\npom_every=%d\ndigits=%s\n",
         s->alarm_on ? 1 : 0, s->alarm_min / 60, s->alarm_min % 60,
         s->dim_mode, s->dim_start / 60, s->dim_start % 60, s->dim_end / 60, s->dim_end % 60,
-        s->dim_level, s->snooze_min, s->ring_s, s->pom_work, s->pom_break, s->pom_long, s->pom_every);
+        s->dim_level, s->snooze_min, s->ring_s, s->pom_work, s->pom_break, s->pom_long, s->pom_every,
+        s->digits == CLOCK_DIGITS_TEXT ? "text" : "seg7");
     return (w < 0 || (size_t)w >= n) ? -1 : w;
 }
 
@@ -324,4 +327,31 @@ const char *clock_timer_label(const ClockState *c)
     if (c->tstate == CLOCK_TIMER_OFF) return "";
     if (!c->pomodoro) return "TIMER";
     return c->phase == CLOCK_PHASE_WORK ? "WORK" : c->phase == CLOCK_PHASE_BREAK ? "BREAK" : "LONG BREAK";
+}
+
+/* ---- digit style ---- */
+
+#define TEXT_ADV 6          /* the shared font's advance per scale step (common/font.h FONT_ADVANCE) */
+#define TEXT_ROWS 7         /* its cap box height in scale steps (text_measure_height) */
+
+void clock_text_metrics(int avail_w, int nchars, ClockTextMetrics *m)
+{
+    int bs = 20, ss;
+    if (nchars < 1) nchars = 1;
+    for (;; bs--) {
+        ss = bs * 2 / 5;
+        if (ss < 1) ss = 1;
+        if (bs <= 1 || nchars * TEXT_ADV * bs + 22 + 2 * TEXT_ADV * ss <= avail_w) break;
+    }
+    m->big_scale = bs;
+    m->small_scale = ss;
+    m->big_h = TEXT_ROWS * bs;
+    m->small_h = TEXT_ROWS * ss;
+    m->gap = 22;
+    m->block_h = 216;       /* the 7-seg big face's height */
+}
+
+const char *clock_digits_name(int digits)
+{
+    return digits == CLOCK_DIGITS_TEXT ? "TEXT" : "7-SEG";
 }
