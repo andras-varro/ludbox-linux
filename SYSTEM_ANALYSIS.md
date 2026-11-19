@@ -1258,6 +1258,8 @@ BlueZ 5.66 leaves the new adapter `Powered: no`. We ship `AutoEnable=true` ([`de
 
 **After pairing an audio device, if `bluetoothctl info` lists only the PnP UUID, `disconnect` then `connect`.** The first pairing of a Sony WI-C310 left SDP incomplete, so `connect` failed `br-connection-profile-unavailable`; the reconnect re-ran SDP (Audio Sink, Headset, Handsfree, AVRCP) and A2DP connected (measured 2026-10-01, `.188`, n=1 device).
 
+**A BlueZ AVRCP link delivers media keys as an evdev node made through `/dev/uinput`, so `uinput` must be loaded before `bluetoothd`.** `profiles/audio/avctp.c` creates one input device per connected sink; without the module every connect logs "AVRCP: failed to init uinput" (measured, `.115`, Linux 7.3.4; `device-files/bluetooth` `load_modules` loads it). An Echo Dot sent, for Alexa voice commands, resume/play `KEY_PLAYCD` (200), pause `KEY_PAUSECD` (201), next `KEY_NEXTSONG` (163), and **"stop" as `KEY_PAUSECD`, not `KEY_STOPCD`, so stop cannot be told from pause**; it works with no music playing (measured, n=1 device). The node has no letter keys, which is why a "20 or more letter keys" keyboard test ignores it. Previous, fast-forward, rewind and `KEY_STOPCD` are handled from the standard key codes and are `[unverified]` on hardware.
+
 ⚠️ **Five readings that look diagnostic and are not** — three were believed and written down before being
 refuted, one of them in this document.
 
