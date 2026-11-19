@@ -33,7 +33,7 @@ static void signal_handler(int sig) { (void)sig; running = 0; }
 /* Stereo for a USB or Bluetooth sink; the panel speaker is permanently mono, so asking the
  * server for two channels there only doubles the bytes and the CPU. */
 static int sink_channels(void) { return audio_out_device_is_onboard() ? 1 : 2; }
-static JfApp app;          /* ~0.8 MB: static */
+static JfApp app;          /* static: see jf_core.h for the store sizes */
 static JfApi api;
 static Logger logger;      /* jf_api logs each request: kind, status, error, ms */
 static JfUi  ui;
@@ -293,7 +293,12 @@ int main(int argc, char *argv[])
     jf_app_init(&app);
     app.volume_step = audio_system_volume_get(&audio);
     jf_seed(&app, (uint32_t)time(NULL) * 2654435761u);
-    {   /* the saved queue comes back paused at its track: nothing plays until PLAY */
+    {   /* the saved queue comes back paused at its track: nothing plays until PLAY.  The list-length setting is read first, so a
+         * queue saved under a longer setting is cut to the one now in force (the START event loads the same file again). */
+        static JfLogin early;
+        jf_settings_load(&early, JF_SETTINGS_PATH);
+        app.login.list_len = early.list_len;
+        jf_list_len_apply(&app);
         static JfItem saved[JF_QUEUE_MAX];
         int cur = 0, pos = 0;
         int n = jf_queue_load(JF_QUEUE_PATH, saved, JF_QUEUE_MAX, &cur, &pos);

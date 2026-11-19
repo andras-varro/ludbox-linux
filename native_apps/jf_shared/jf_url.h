@@ -20,7 +20,7 @@
 #define JF_HOST_MAX      64
 #define JF_DEFAULT_PORT  8096
 #define JF_ID_LEN        32     /**< hex digits of a Jellyfin id; buffers hold +1 */
-#define JF_SAVE_IDS_MAX  100    /**< track ids a saved playlist carries */
+#define JF_SAVE_IDS_MAX  500    /**< track ids a saved playlist carries */
 
 /** Percent-encode `s` (RFC 3986 unreserved stay) into `out`.  Length, or -1 if it does not fit. */
 int jf_url_encode(char *out, size_t cap, const char *s);

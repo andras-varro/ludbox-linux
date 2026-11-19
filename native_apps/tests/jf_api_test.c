@@ -77,7 +77,7 @@ static void serve(int ls, int hpipe, const Act *script, int nscript)
         }
         if (!end) { close(c); continue; }
         /* drain a request body so the close does not reset the reply, and report it after the head */
-        char body[8192];
+        char body[JF_API_POST_BYTES + 256];      /* the largest request body (a full SAVE) plus margin */
         size_t have = len - (size_t)(end + 4 - buf);
         const char *cl = strstr(buf, "Content-Length: ");
         size_t want = cl ? (size_t)atoi(cl + 16) : 0;
@@ -109,7 +109,7 @@ static void serve(int ls, int hpipe, const Act *script, int nscript)
     }
 }
 
-typedef struct { int ls, port, hp[2]; pid_t pid; char heads[16384]; size_t hlen; } Srv;
+typedef struct { int ls, port, hp[2]; pid_t pid; char heads[16384 + JF_API_POST_BYTES]; size_t hlen; } Srv;
 
 static Srv *srv_start(const Act *script, int n)
 {
@@ -417,7 +417,7 @@ static void test_save(void)
     jf_api_free(&a);
     srv_stop(s);
 
-    /* the largest save: 100 ids, in order, the whole body arrives */
+    /* the largest save: JF_SAVE_IDS_MAX ids, in order, the whole body arrives */
     char idbuf[JF_SAVE_IDS_MAX][JF_ID_LEN + 1];
     const char *ids[JF_SAVE_IDS_MAX];
     for (int i = 0; i < JF_SAVE_IDS_MAX; i++) {
@@ -429,7 +429,7 @@ static void test_save(void)
     CHECK(jf_api_enqueue_save(&a, 1, "Big", ID1, ids, JF_SAVE_IDS_MAX) == 0);
     CHECK(pump(&a, r, 4, 3000) == 1 && r[0].err == JF_ERR_NONE);
     h = heads(s);
-    const char *p1 = strstr(h, idbuf[0]), *p100 = strstr(h, idbuf[99]);
+    const char *p1 = strstr(h, idbuf[0]), *p100 = strstr(h, idbuf[JF_SAVE_IDS_MAX - 1]);
     CHECK(p1 && p100 && p1 < p100);
     CHECK(strstr(h, "\"],\"UserId\":\"" ID1 "\",\"MediaType\":\"Audio\"}") != NULL);
     CHECK(jf_api_enqueue_save(&a, 2, "Big", ID1, ids, JF_SAVE_IDS_MAX + 1) == -1);

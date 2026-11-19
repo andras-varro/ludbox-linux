@@ -82,6 +82,8 @@ void jf_ui_dup_title(const JfApp *app, char *buf, size_t cap);
 
 /** The SETTINGS tap-action row: "TAP: REPLACE QUEUE", "TAP: ADD AND PLAY" or "TAP: ADD ONLY". */
 void jf_ui_tap_label(const JfApp *app, char *buf, size_t cap);
+/** The SETTINGS list-length row: "LIST LENGTH: 100", "LIST LENGTH: 200" or "LIST LENGTH: 500". */
+void jf_ui_listlen_label(const JfApp *app, char *buf, size_t cap);
 /** The file-tags settings row: "FILE TAGS: OFF" / "FILE TAGS: ON" / "FILE TAGS: SERVER REFUSED" (on, but this server answered a range read with the whole file). */
 void jf_ui_tags_label(const JfApp *app, char *buf, size_t cap);
 

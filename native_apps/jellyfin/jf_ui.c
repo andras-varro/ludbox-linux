@@ -225,6 +225,7 @@ static void src_row(void *ctx, int index, LvRow *out)
         if (ids[index] == JF_SET_SIGNOUT) jf_ui_signout_label(app, t, sizeof ui->rowtxt[0]);
         else if (ids[index] == JF_SET_TAP) jf_ui_tap_label(app, t, sizeof ui->rowtxt[0]);
         else if (ids[index] == JF_SET_TAGS) jf_ui_tags_label(app, t, sizeof ui->rowtxt[0]);
+        else if (ids[index] == JF_SET_LISTLEN) jf_ui_listlen_label(app, t, sizeof ui->rowtxt[0]);
         else {
             int r = chosen_lib_row(app);
             if (r == 0) snprintf(t, sizeof ui->rowtxt[0], "ALL LIBRARIES");
@@ -537,6 +538,12 @@ void jf_ui_tap_label(const JfApp *app, char *buf, size_t cap)
     static const char *const nm[JF_TAP_COUNT] = { "REPLACE QUEUE", "ADD AND PLAY", "ADD ONLY" };
     int t = app->login.tap_action;
     snprintf(buf, cap, "TAP: %s", nm[t >= 0 && t < JF_TAP_COUNT ? t : JF_TAP_REPLACE]);
+}
+
+/* The list-length settings row: "LIST LENGTH: 100" / "200" / "500". */
+void jf_ui_listlen_label(const JfApp *app, char *buf, size_t cap)
+{
+    snprintf(buf, cap, "LIST LENGTH: %d", jf_list_len(app));
 }
 
 void jf_ui_tags_label(const JfApp *app, char *buf, size_t cap)

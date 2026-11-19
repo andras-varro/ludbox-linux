@@ -43,8 +43,8 @@
 #define JF_PAGE_SEARCH    20
 #define JF_CAP_ARTISTS  1600
 #define JF_CAP_ALBUMS    300
-#define JF_CAP_TRACKS    300
-#define JF_CAP_SEARCH    400      /* 200 hits plus one inlined artist (JF_CAP_ARTINL fits the splice) */
+#define JF_CAP_TRACKS    JF_QUEUE_MAX   /* a TRACKS list fills the whole queue: PLAY from any row, and a saved playlist of JF_SAVE_IDS_MAX (= JF_QUEUE_MAX) opens whole */
+#define JF_CAP_SEARCH    (JF_QUEUE_MAX + JF_CAP_ARTINL)   /* hits kept for the list and for PLAY ALL / ADD ALL, which page through them: JF_QUEUE_MAX hits plus one inlined artist (JF_CAP_ARTINL rows) */
 #define JF_CAP_MIX       200      /* an instant mix: JF_MIX_LIMIT items fit */
 #define JF_CAP_SEED        2
 #define JF_CAP_GENRES    100      /* JF_MIX_GENRE_PAGE */
@@ -54,9 +54,9 @@
 #define JF_CAP_PLCHK      50      /* one page of a playlist's track ids in the duplicate scan (the scan clears it between pages) */
 #define JF_PAGE_PLPICK    50
 #define JF_PAGE_PLCHK     50
-#define JF_PAGE_ARTALL    40      /* PLAY ALL on an artist folder: JF_CAP_ARTALL = JF_QUEUE_MAX tracks in 5 pages */
+#define JF_PAGE_ARTALL    40      /* PLAY ALL on an artist folder: JF_CAP_ARTALL = JF_QUEUE_MAX tracks in 13 pages */
 #define JF_PAGE_ARTINL    40
-#define JF_CAP_ARTALL    200
+#define JF_CAP_ARTALL    JF_QUEUE_MAX
 #define JF_CAP_ARTINL    300      /* an artist inlined in a search: albums, then the tracks the filter keeps */
 #define JF_ART_PAGES_MAX  20      /* tracks pages one artist folder asks for: a prolific artist whose tracks all sit on filtered albums must end */
 #define JF_DUP_PAGES_MAX  40      /* pages the duplicate scan reads (2000 entries) before it gives up and asks */
@@ -71,7 +71,8 @@
 #define JF_MIX_GENRE_PAGE 100
 #define JF_MIX_REQ_MAX     8      /* pool requests, then take what is found */
 #define JF_MIX_SMALL     120      /* a server total up to this is paged in a stable order and shuffled here: random pages would repeat */
-#define JF_QUEUE_MAX     200
+#define JF_QUEUE_MAX     500      /* = JF_SAVE_IDS_MAX: a saved playlist loads whole and the queue saves whole */
+_Static_assert(JF_QUEUE_MAX == JF_SAVE_IDS_MAX, "the queue saves whole as a playlist: JF_QUEUE_MAX == JF_SAVE_IDS_MAX");
 #define JF_NAV_MAX        16
 #define JF_CMDS_MAX        5
 #define JF_PATH_MAX      512
@@ -121,7 +122,7 @@ typedef enum { JF_CONFIRM_NONE = 0, JF_CONFIRM_INSTANT_MIX, JF_CONFIRM_CLEAR_QUE
 
 /* The settings view is a table of rows (the extension point: a new setting is one JfSettingId and one line in
  * jf_settings_rows()).  Page MAIN lists the rows; page LIBRARY lists ALL LIBRARIES then each lists[JF_LIST_LIBS] item. */
-typedef enum { JF_SET_LIBRARY = 0, JF_SET_SIGNOUT, JF_SET_TAP, JF_SET_TAGS, JF_SET_COUNT } JfSettingId;   /* rows show in the order LIBRARY, TAP, FILE TAGS, SIGN OUT; TAP steps login.tap_action and saves; TAGS toggles login.tags_on and saves */
+typedef enum { JF_SET_LIBRARY = 0, JF_SET_SIGNOUT, JF_SET_TAP, JF_SET_TAGS, JF_SET_LISTLEN, JF_SET_COUNT } JfSettingId;   /* rows show in the order LIBRARY, TAP, LIST LENGTH, FILE TAGS, SIGN OUT; LISTLEN steps login.list_len 100 / 200 / 500 and saves; TAP steps login.tap_action and saves; TAGS toggles login.tags_on and saves */
 typedef enum { JF_SETPAGE_MAIN = 0, JF_SETPAGE_LIBRARY } JfSettingsPage;
 
 /* Buttons of the error overlay (JfApp.overlay_buttons). */
@@ -148,7 +149,7 @@ typedef enum {
                           * UI names it); the CONFIRM sends one WRITE DELETE and the result shows a banner.  Ignored while a delete is pending */
     JF_EV_PICK_OPEN,     /* ADD TO PLAYLIST.  .i = list row of a track (the action bar's sixth button), or -1 = every track of the TRACKS screen's list
                           * (an album or a playlist; never an artist's albums).  Collects the ids into pick_ids / pick_n (the first JF_SAVE_IDS_MAX, banner
-                          * "FIRST 100 TRACKS ONLY" when cut; unloaded pages are fetched first, pick_wait) and opens JF_SCR_PLPICK with pick_sel = -1.
+                          * "FIRST <n> TRACKS ONLY" when cut; unloaded pages are fetched first, pick_wait) and opens JF_SCR_PLPICK with pick_sel = -1.
                           * Ignored while an add is in flight */
     JF_EV_PICK_SELECT,   /* .i = list row of JF_LIST_PLPICK (the UI shows "+ NEW PLAYLIST" at row 0 and maps k+1 -> k): sets pick_sel; opens nothing */
     JF_EV_PICK_NEW,      /* .term = the new playlist's name (never empty): one SAVE with the pick_ids, banner "ADDED TO <name>", the picker list reloads
@@ -392,8 +393,9 @@ typedef struct {
     int flat_mode;                       /* JF_FLAT_*: PLAY ALL / ADD ALL on the search list is expanding its album and artist hits through JF_LIST_ARTALL */
     int flat_hit;                        /* the next search row to flatten */
     int flat_n, flat_seen;               /* tracks collected / rows of the ARTALL list already taken */
-    bool flat_cut;                       /* a track did not fit the cap */
-    JfItem flat[JF_QUEUE_MAX];           /* the tracks collected so far, in hit order, duplicates by id dropped */
+    bool flat_cut;                       /* a track did not fit the cap, or hits were left unread */
+    bool flat_wait;                      /* the next page of the search list is in flight for the walk */
+    JfItem flat[JF_QUEUE_MAX];           /* PLAY ALL: the tracks collected so far, in hit order, duplicates by id dropped */
     int fail_streak;
     JfSessionFn session_fn;
     JfSinkChannelsFn sink_channels_fn;   /* NULL = mono */
@@ -419,6 +421,13 @@ bool jf_search_playable(const JfApp *app);
 
 /** The settings rows to show, in order (JfSettingId values; returns the count).  An unavailable row is absent: LIBRARY needs 2 or more music libraries. */
 int jf_settings_rows(const JfApp *app, int ids[JF_SET_COUNT]);
+
+/** The effective list length (100, 200 or 500): jf_list_len_clamp(app->login.list_len).  JF_QUEUE_MAX / JF_SAVE_IDS_MAX stay the array sizes. */
+int jf_list_len(const JfApp *app);
+
+/** Re-derive the TRACKS / SEARCH / ARTALL list capacities from the effective length.  jf_app_init and on_start call it; call it after
+ *  setting app->login.list_len by hand (the shell does before restoring the saved queue). */
+void jf_list_len_apply(JfApp *app);
 
 /** True when the duplicate question offers SKIP EXISTING: the scan finished (not dup_unknown) and some but not all of pick_ids are in the playlist. */
 bool jf_dup_can_skip(const JfApp *app);

@@ -102,9 +102,18 @@ int jf_login_save(const JfLogin *l, const char *path)
     return rc == 0 ? 0 : -1;
 }
 
+int jf_list_len_clamp(int v)
+{
+    if (v <= 0) return JF_LIST_LEN_DEFAULT;
+    if (v >= 500) return 500;
+    if (v >= 200) return 200;
+    return 100;
+}
+
 int jf_settings_load(JfLogin *l, const char *path)
 {
     Config cfg;
+    l->list_len = JF_LIST_LEN_DEFAULT;
     l->library[0] = l->library_name[0] = '\0';
     l->tap_action = JF_TAP_REPLACE;
     l->tags_on = 0;
@@ -122,6 +131,7 @@ int jf_settings_load(JfLogin *l, const char *path)
         l->tap_action = ta >= 0 && ta < JF_TAP_COUNT ? ta : JF_TAP_REPLACE;
         l->tags_on = config_get_int(&cfg, "tags_read", 0) == 1;
         copy(l->tags_cut, sizeof l->tags_cut, config_get(&cfg, "tags_cut", ""));
+        l->list_len = jf_list_len_clamp(config_get_int(&cfg, "list_len", JF_LIST_LEN_DEFAULT));
     }
     return rc;
 }
@@ -137,6 +147,7 @@ int jf_settings_save(const JfLogin *l, const char *path)
     }
     config_set_int(&cfg, "tap_action", l->tap_action >= 0 && l->tap_action < JF_TAP_COUNT ? l->tap_action : JF_TAP_REPLACE);
     config_set_int(&cfg, "tags_read", l->tags_on ? 1 : 0);
+    config_set_int(&cfg, "list_len", jf_list_len_clamp(l->list_len));
     if (l->tags_cut[0]) config_set(&cfg, "tags_cut", l->tags_cut);
 
     mkdir_parents(path);

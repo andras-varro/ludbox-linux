@@ -381,7 +381,7 @@ static void test_body(void)
 
 static void test_mix_and_save(void)
 {
-    char b[8192];
+    char b[JF_API_POST_BYTES];
     int n = jf_path_instant_mix(b, sizeof(b), UID, ALB, 50);
     EXPECT("instant mix", n, b, "/Items/" ALB "/InstantMix?userId=" UID "&Limit=50&EnableImages=false&EnableUserData=false");
     CHECK(jf_path_instant_mix(b, sizeof(b), "short", ALB, 50) == -1, "bad uid accepted");
@@ -409,10 +409,10 @@ static void test_mix_and_save(void)
     CHECK(n > 0 && strstr(b, "\"Name\":\"\",") != NULL, "empty name refused");
 
     n = jf_save_body(b, sizeof(b), "Max", UID, ids, JF_SAVE_IDS_MAX);
-    CHECK(n > 0 && n < 4608, "100-id body: %d bytes", n);
+    CHECK(n > 0 && n < JF_API_POST_BYTES, "max-id body: %d of %d bytes", n, JF_API_POST_BYTES);
     CHECK(strstr(b, "\"Ids\":[\"" ALB "\",\"" ART "\",\"" ALB "\"") != NULL, "ids out of order");
-    CHECK(b[n - 1] == '}' && strstr(b, "\"],\"UserId\"") != NULL, "100-id body not closed");
-    CHECK(jf_save_body(b, sizeof(b), "Max", UID, ids, JF_SAVE_IDS_MAX + 1) == -1, "101 ids accepted");
+    CHECK(b[n - 1] == '}' && strstr(b, "\"],\"UserId\"") != NULL, "max-id body not closed");
+    CHECK(jf_save_body(b, sizeof(b), "Max", UID, ids, JF_SAVE_IDS_MAX + 1) == -1, "JF_SAVE_IDS_MAX+1 ids accepted");
     CHECK(jf_save_body(b, sizeof(b), "Max", UID, ids, 0) == -1, "0 ids accepted");
     CHECK(jf_save_body(b, sizeof(b), "Max", UID, ids, -1) == -1, "-1 ids accepted");
     CHECK(jf_save_body(b, sizeof(b), "Max", UID, NULL, 1) == -1, "NULL ids accepted");

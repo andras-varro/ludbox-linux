@@ -49,7 +49,7 @@
 #define JF_API_BODY_BYTES (160 * 1024)
 #define JF_API_PATH_MAX   512   /* = JF_PATH_MAX: a MIX pool path with 4 genre ids + artist + decade is 418 */
 #define JF_API_BODY_OUT   320       /**< largest AUTH request body */
-#define JF_API_POST_BYTES 4608      /**< largest request body: a SAVE of JF_SAVE_IDS_MAX ids (~3.6 KB) */
+#define JF_API_POST_BYTES 18432     /**< largest request body: a SAVE of JF_SAVE_IDS_MAX ids (35 B each, ~17.5 KB, plus the name and ~110 B of frame) */
 #define JF_API_TOKEN_MAX  64
 #define JF_API_NAME_MAX   64
 

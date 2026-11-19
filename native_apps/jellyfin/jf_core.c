@@ -431,7 +431,7 @@ static void start_queue(JfApp *app, int lid, int from, JfCmds *out)
 {
     const JfList *l = &app->lists[lid];
     app->queue_n = 0;
-    for (int k = from; k < l->n && app->queue_n < JF_QUEUE_MAX; k++)
+    for (int k = from; k < l->n && app->queue_n < jf_list_len(app); k++)
         if (l->items[k].type == JF_ITEM_TRACK) app->queue[app->queue_n++] = l->items[k];
     if (app->queue_n == 0) return;
     app->fail_streak = 0;
@@ -483,7 +483,7 @@ static void start_items(JfApp *app, const JfItem *src, int n, const char *name, 
     if (have == 0) return;               /* an empty answer leaves the queue as it is */
     bool live = !nothing_plays(app);
     app->queue_n = 0;
-    for (int k = 0; k < n && app->queue_n < JF_QUEUE_MAX; k++)
+    for (int k = 0; k < n && app->queue_n < jf_list_len(app); k++)
         if (src[k].type == JF_ITEM_TRACK) app->queue[app->queue_n++] = src[k];
     copy(app->queue_name, sizeof(app->queue_name), name);
     app->fail_streak = 0;
@@ -500,7 +500,7 @@ static void on_play_next(JfApp *app, int i, JfCmds *out)
         start_items(app, &it, 1, nm, out);
         return;
     }
-    if (app->queue_n >= JF_QUEUE_MAX) { set_banner(app, "QUEUE FULL"); return; }
+    if (app->queue_n >= jf_list_len(app)) { set_banner(app, "QUEUE FULL"); return; }
     int at = app->queue_cur + 1;           /* queue_cur stays: the playing track is not disturbed */
     memmove(&app->queue[at + 1], &app->queue[at], sizeof(app->queue[0]) * (size_t)(app->queue_n - at));
     app->queue[at] = it;
@@ -518,7 +518,7 @@ static void on_add_queue(JfApp *app, int i, JfCmds *out)
         start_items(app, &it, 1, nm, out);
         return;
     }
-    if (app->queue_n >= JF_QUEUE_MAX) { set_banner(app, "QUEUE FULL"); return; }
+    if (app->queue_n >= jf_list_len(app)) { set_banner(app, "QUEUE FULL"); return; }
     app->queue[app->queue_n++] = it;
     set_banner(app, "ADDED TO QUEUE");
 }
@@ -568,6 +568,17 @@ static void clear_queue(JfApp *app, JfCmds *out)
 
 /* ── settings: LIBRARY and SIGN OUT ────────────────────────────────────── */
 
+int jf_list_len(const JfApp *app) { return jf_list_len_clamp(app->login.list_len); }
+
+/* The stores keep their full size; only the cap the list code enforces follows the setting.  SEARCH keeps room for one inlined artist. */
+void jf_list_len_apply(JfApp *app)
+{
+    int n = jf_list_len(app);
+    app->lists[JF_LIST_TRACKS].cap = n < JF_CAP_TRACKS ? n : JF_CAP_TRACKS;
+    app->lists[JF_LIST_ARTALL].cap = n < JF_CAP_ARTALL ? n : JF_CAP_ARTALL;
+    app->lists[JF_LIST_SEARCH].cap = n + JF_CAP_ARTINL < JF_CAP_SEARCH ? n + JF_CAP_ARTINL : JF_CAP_SEARCH;
+}
+
 static void session_expired(JfApp *app, JfCmds *out);
 
 int jf_settings_rows(const JfApp *app, int ids[JF_SET_COUNT])
@@ -575,6 +586,7 @@ int jf_settings_rows(const JfApp *app, int ids[JF_SET_COUNT])
     int n = 0;
     if (app->lib_n >= 2) ids[n++] = JF_SET_LIBRARY;   /* absent, not greyed, with 0 or 1 music library */
     ids[n++] = JF_SET_TAP;
+    ids[n++] = JF_SET_LISTLEN;
     ids[n++] = JF_SET_TAGS;
     ids[n++] = JF_SET_SIGNOUT;
     return n;
@@ -623,6 +635,11 @@ static void on_setting_activate(JfApp *app, int id, JfCmds *out)
         else if (id == JF_SET_SIGNOUT) app->confirm = JF_CONFIRM_SIGN_OUT;
         else if (id == JF_SET_TAP) {   /* a three-way choice: each activation steps to the next, and the choice is saved */
             app->login.tap_action = (app->login.tap_action + 1) % JF_TAP_COUNT;
+            emit(out, JF_CMD_SAVE_LOGIN);
+        } else if (id == JF_SET_LISTLEN) {   /* a three-way choice, 100 -> 200 -> 500 -> 100; saved.  The lists that have a capacity of their own follow it */
+            int cur = jf_list_len(app);
+            app->login.list_len = cur >= 500 ? 100 : cur >= 200 ? 500 : 200;
+            jf_list_len_apply(app);
             emit(out, JF_CMD_SAVE_LOGIN);
         } else if (id == JF_SET_TAGS) {   /* on: forget a cut-off and read the playing track's tags; off: drop the read and what it found */
             app->login.tags_on = !app->login.tags_on;
@@ -1040,7 +1057,7 @@ static void on_save(JfApp *app, const char *name, JfCmds *out)
     c->kind = JF_KIND_SAVE;
     c->tag = ++app->save_tag;
     copy(c->name, sizeof(c->name), name);
-    c->n = app->queue_n < JF_SAVE_IDS_MAX ? app->queue_n : JF_SAVE_IDS_MAX;
+    c->n = app->queue_n < jf_list_len(app) ? app->queue_n : jf_list_len(app);
     copy(app->save_name, sizeof(app->save_name), name);
     app->save_pending = true;
     app->save_pick = false;
@@ -1119,14 +1136,33 @@ bool jf_search_playable(const JfApp *app)
     return false;
 }
 
-static int flat_cap(const JfApp *app) { return app->flat_mode == JF_FLAT_PICK ? JF_SAVE_IDS_MAX : JF_QUEUE_MAX; }
+/* ADD ALL took only the first `n` tracks: the banner is the user's only hint that the rest is not coming (set after pick_enter). */
+static void cut_banner(JfApp *app, int n)
+{
+    char b[32];
+    snprintf(b, sizeof b, "FIRST %d TRACKS ONLY", n);
+    set_banner(app, b);
+}
 
+static void queue_cut_banner(JfApp *app)
+{
+    char b[32];
+    snprintf(b, sizeof b, "FIRST %d QUEUED", jf_list_len(app));
+    set_banner(app, b);
+}
+
+static int flat_cap(const JfApp *app) { return jf_list_len(app); }   /* PLAY ALL and ADD ALL share the one effective length */
+
+/* ADD ALL collects bare ids straight into pick_ids (JF_SAVE_IDS_MAX of them: a JfItem copy each would not fit); PLAY ALL keeps whole rows. */
 static void flat_add(JfApp *app, const JfItem *it)
 {
     if (it->type != JF_ITEM_TRACK) return;
-    for (int k = 0; k < app->flat_n; k++) if (!strcmp(app->flat[k].id, it->id)) return;
+    bool pick = app->flat_mode == JF_FLAT_PICK;
+    for (int k = 0; k < app->flat_n; k++) if (!strcmp(pick ? app->pick_ids[k] : app->flat[k].id, it->id)) return;
     if (app->flat_n >= flat_cap(app)) { app->flat_cut = true; return; }
-    app->flat[app->flat_n++] = *it;
+    if (pick) copy(app->pick_ids[app->flat_n], sizeof(app->pick_ids[0]), it->id);
+    else app->flat[app->flat_n] = *it;
+    app->flat_n++;
 }
 
 static void flat_finish(JfApp *app, JfCmds *out)
@@ -1138,13 +1174,12 @@ static void flat_finish(JfApp *app, JfCmds *out)
         char nm[96];
         snprintf(nm, sizeof nm, "Queue: %.80s", app->flat[0].name);
         start_items(app, app->flat, app->flat_n, nm, out);
-        if (app->flat_cut) set_banner(app, "FIRST 200 QUEUED");
+        if (app->flat_cut) queue_cut_banner(app);
         return;
     }
-    for (int k = 0; k < app->flat_n; k++) copy(app->pick_ids[k], sizeof(app->pick_ids[0]), app->flat[k].id);
     app->pick_n = app->flat_n;
     pick_enter(app, out);
-    if (app->flat_cut) set_banner(app, "FIRST 100 TRACKS ONLY");
+    if (app->flat_cut) cut_banner(app, app->flat_n);
 }
 
 /* Walk the search rows from flat_hit: tracks are taken, the first container starts its request and the walk resumes from its reply. */
@@ -1163,6 +1198,19 @@ static void flat_step(JfApp *app, JfCmds *out)
         retarget(app, JF_LIST_ARTALL, id, name, it->type == JF_ITEM_ALBUM ? JF_SUB_ALBUM : JF_SUB_PLAIN, out);
         if (app->lists[JF_LIST_ARTALL].pending) return;
     }
+    /* The rows loaded so far are done.  A broad term loads one page per scroll, so the walk pages on itself: the hits at the end
+     * of a long result are reachable without scrolling to them first. */
+    if (s->loaded < s->total) {
+        if (app->flat_n >= flat_cap(app) || s->full || s->n >= s->cap) app->flat_cut = true;   /* hits are left unread */
+        else if (!app->inl_on) {
+            int mode = app->flat_mode;
+            if (request_page(app, JF_LIST_SEARCH, s->loaded, out)) {
+                app->flat_mode = mode;   /* request_page ends a walk for any list but ARTALL */
+                app->flat_wait = true;
+                return;
+            }
+        }
+    }
     flat_finish(app, out);
 }
 
@@ -1172,7 +1220,7 @@ static void flat_begin(JfApp *app, int mode, JfCmds *out)
     app->pick_wait = app->play_wait = false;
     app->flat_mode = mode;
     app->flat_hit = app->flat_n = app->flat_seen = 0;
-    app->flat_cut = false;
+    app->flat_cut = app->flat_wait = false;
     flat_step(app, out);
 }
 
@@ -1190,13 +1238,13 @@ static void flat_reply(JfApp *app, JfCmds *out)
 }
 
 /* PICK_OPEN -1: every track of the TRACKS list, or its first JF_SAVE_IDS_MAX.  Like PLAY ALL it needs the rows, so missing pages
- * are fetched first (on_list calls this again after each one); it stops fetching once 100 tracks are in, since no more can be used.
+ * are fetched first (on_list calls this again after each one); it stops fetching once JF_SAVE_IDS_MAX tracks are in, since no more can be used.
  * On the search screen the loaded hits are flattened instead (flat_begin). */
 static void pick_all(JfApp *app, JfCmds *out)
 {
     JfList *l = &app->lists[JF_LIST_TRACKS];
     int tn = track_rows(l);
-    if (tn < JF_SAVE_IDS_MAX && l->loaded < l->total && !l->full) {
+    if (tn < jf_list_len(app) && l->loaded < l->total && !l->full) {
         app->pick_wait = true;
         if (!l->pending) request_page(app, JF_LIST_TRACKS, l->loaded, out);
         return;
@@ -1204,16 +1252,16 @@ static void pick_all(JfApp *app, JfCmds *out)
     app->pick_wait = false;
     if (tn == 0) return;
     int n = 0;
-    for (int k = 0; k < l->n && n < JF_SAVE_IDS_MAX; k++)
+    for (int k = 0; k < l->n && n < jf_list_len(app); k++)
         if (l->items[k].type == JF_ITEM_TRACK) copy(app->pick_ids[n++], sizeof(app->pick_ids[0]), l->items[k].id);
     app->pick_n = n;
-    bool cut = tn > JF_SAVE_IDS_MAX || (tn == JF_SAVE_IDS_MAX && l->loaded < l->total);
+    bool cut = tn > jf_list_len(app) || l->loaded < l->total;   /* a list that ended at its own cap is cut too */
     pick_enter(app, out);
-    if (cut) set_banner(app, "FIRST 100 TRACKS ONLY");   /* after the request: the banner is the user's only hint that the rest is not coming */
+    if (cut) cut_banner(app, n);
 }
 
 /* The sixth button of a track's action bar (.i = its row), or "+ PLAYLIST" for a whole album / playlist (.i = -1, the TRACKS screen
- * only: an artist's folder holds hundreds of tracks against the 100-id cap).  Ids are copied, so the list may move on. */
+ * only: an artist's folder holds hundreds of tracks against the JF_SAVE_IDS_MAX-id cap).  Ids are copied, so the list may move on. */
 static void on_pick_open(JfApp *app, int i, JfCmds *out)
 {
     if (!have_token(app) || app->add_pending || app->dup_scan || app->save_pending) return;   /* pick_ids is in use */
@@ -1553,11 +1601,15 @@ static void on_list(JfApp *app, const JfResult *r, JfCmds *out)
         if (l->loaded < l->total && l->n < l->cap && !l->full) { request_page(app, lid, l->loaded, out); return; }
         app->play_wait = false;
         start_queue(app, lid, 0, out);
-        if (l->total > JF_QUEUE_MAX && app->queue_n > 0) set_banner(app, "FIRST 200 QUEUED");   /* the rest of a long discography is not coming */
+        if (l->total > jf_list_len(app) && app->queue_n > 0) queue_cut_banner(app);   /* the rest of a long discography is not coming */
         return;
     }
     if (lid == JF_LIST_ARTINL || (lid == JF_LIST_ALBUMS && app->ctx[lid].sub == JF_SUB_PLAIN)) { art_reply(app, lid, out); return; }
-    if (lid == JF_LIST_SEARCH) { search_reply(app, out); return; }
+    if (lid == JF_LIST_SEARCH) {
+        if (app->flat_mode && app->flat_wait) { app->flat_wait = false; flat_step(app, out); return; }   /* the walk's next page */
+        search_reply(app, out);
+        return;
+    }
     if (app->pick_wait && lid == JF_LIST_TRACKS) { pick_all(app, out); return; }
     if (app->play_wait && lid == JF_LIST_TRACKS) {
         if (l->loaded < l->total && !l->full) request_page(app, lid, l->loaded, out);
@@ -1675,6 +1727,11 @@ static void on_result(JfApp *app, const JfResult *r, JfCmds *out)
 static void on_start(JfApp *app, const JfLogin *lg, JfCmds *out)
 {
     app->login = *lg;
+    jf_list_len_apply(app);
+    if (app->queue_n > jf_list_len(app)) {   /* a queue restored under a longer setting is cut to the one now in force */
+        app->queue_n = jf_list_len(app);
+        if (app->queue_cur >= app->queue_n) app->queue_cur = app->queue_n - 1;
+    }
     copy(app->id_server, sizeof(app->id_server), lg->server);
     copy(app->id_user, sizeof(app->id_user), lg->user);
     char host[JF_HOST_MAX];
@@ -1738,7 +1795,7 @@ static void tap_track(JfApp *app, int lid, int i, JfCmds *out)
         start_items(app, &it, 1, nm, out);
         return;
     }
-    if (app->queue_n >= JF_QUEUE_MAX) { set_banner(app, "QUEUE FULL"); return; }
+    if (app->queue_n >= jf_list_len(app)) { set_banner(app, "QUEUE FULL"); return; }
     app->queue[app->queue_n++] = it;
     app->fail_streak = 0;
     play_track(app, app->queue_n - 1, !nothing_plays(app), out);
@@ -1913,7 +1970,7 @@ static void on_queue_remove(JfApp *app, int i, JfCmds *out)
 void jf_queue_restore(JfApp *app, const JfItem *items, int n, int cur, int pos_ms)
 {
     if (n <= 0) return;
-    if (n > JF_QUEUE_MAX) n = JF_QUEUE_MAX;
+    if (n > jf_list_len(app)) n = jf_list_len(app);
     for (int k = 0; k < n; k++) app->queue[k] = items[k];
     app->queue_n = n;
     app->queue_cur = cur < 0 ? 0 : cur >= n ? n - 1 : cur;

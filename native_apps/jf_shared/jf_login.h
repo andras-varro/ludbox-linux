@@ -21,6 +21,21 @@
 /** What a tap on a track row (the PLAY button of its bar) does; one setting, persisted as tap_action. */
 typedef enum { JF_TAP_REPLACE = 0, JF_TAP_ADD_PLAY, JF_TAP_ADD_ONLY, JF_TAP_COUNT } JfTapAction;
 
+/** The list-length setting: how many tracks a queue, a TRACKS list, a search / artist PLAY ALL or ADD ALL and a saved playlist hold.
+ *  Three choices; the compile-time array sizes (500) are the hard maximum. */
+#define JF_LIST_LEN_MAX      500
+#define JF_LIST_LEN_DEFAULT  500
+
+/**
+ * The one validation rule for a list length read from a file (or held in JfLogin.list_len):
+ *   v <= 0 (unset, zero, garbage read as 0)  -> 500 (the default)
+ *   1..99                                    -> 100 (the smallest choice)
+ *   100..499                                 -> rounded DOWN to the nearest choice: 100, 200 or 500 (so 150 -> 100, 499 -> 200)
+ *   >= 500 (including 10000)                 -> 500
+ * Pure; no division.
+ */
+int jf_list_len_clamp(int v);
+
 typedef struct {
     char server[64];
     char user[64];
@@ -29,7 +44,8 @@ typedef struct {
     char device_id[64];
     int tap_action;         /* JfTapAction; an unknown or missing value is JF_TAP_REPLACE */
     int tags_on;             /* 1 = read each playing track's file tags by a range request (default 0); persisted as tags_read */
-    char tags_cut[64];       /* the `server` string a 200-instead-of-206 answer switched tag reads off for (persisted as tags_cut); "" = none */
+    int list_len;            /* the list-length setting (jf_list_len_clamp reads it, so 0 = default 500); persisted as list_len */
+    char tags_cut[64];      /* the `server` string a 200-instead-of-206 answer switched tag reads off for (persisted as tags_cut); "" = none */
     char library[33];        /* chosen music library id; empty = all libraries */
     char library_name[64];
 } JfLogin;
