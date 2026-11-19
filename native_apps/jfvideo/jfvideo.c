@@ -421,6 +421,19 @@ int main(int argc, char *argv[])
             if (jv_ui_view(&ui, &vt, &vc)) jv_note_view(&core, vt, vc);
         }
         for (int i = 0; i < un; i++) push(&uev[i]);
+        {   /* Bluetooth media keys (AVRCP): the same core events the overlay buttons send.  The core has not seen this frame's
+             * events yet, so a PAUSE then a PLAY in one frame must see the state the first one leaves. */
+            JvPlayState mst = core.play_state;
+            InputMedia ma;
+            while ((ma = gamepad_take_media(&gp)) != INPUT_MEDIA_NONE) {
+                int marg;
+                JvEventType mev = jv_media_event(ma, mst, core.screen, &marg);
+                if (mev == JV_EV_NONE) continue;
+                if (mev == JV_EV_PAUSE) mst = mst == JV_PLAY_PLAYING ? JV_PLAY_PAUSED : JV_PLAY_PLAYING;
+                if (mev == JV_EV_STOP) mst = JV_PLAY_IDLE;
+                push_type(mev, marg);
+            }
+        }
         {   /* what the overlay asked for: volume and the equaliser (neither is a core event) */
             unsigned act = jv_ui_take_actions(&ui);
             if (act & JV_UI_ACTB_VOL_UP) volume_step(+1);

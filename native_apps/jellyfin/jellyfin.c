@@ -348,6 +348,13 @@ int main(int argc, char *argv[])
             if (jf_ui_view(&ui, &vt, &vc)) jf_note_view(&app, vt, vc);
         }
         for (int i = 0; i < un; i++) push(&uev[i]);
+        {   /* Bluetooth media keys (an Echo's "pause" / "resume" / "next"), on every screen, through the buttons' own events */
+            InputMedia mk;
+            while ((mk = gamepad_take_media(&gp)) != INPUT_MEDIA_NONE) {
+                JfEvent me;
+                if (jf_media_event(&app, mk, jf_position_ms(&app, track_live ? (int)(now - track_t0) : 0), &me)) push(&me);
+            }
+        }
         {   /* the equaliser panel: every edit is heard at once, DONE also saves */
             int eg[EQ_BANDS];
             bool esave;

@@ -31,6 +31,7 @@
 #include "jf_login.h"
 #include "jf_api.h"
 #include "jf_url_music.h"
+#include "input_scan.h"      /* InputMedia, for jf_media_event */
 
 /* Page sizes (items per request) and storage caps per list.  The artists cap
  * covers the 1505 album artists and the 1120 genres of the test server (the root list
@@ -456,6 +457,15 @@ int jf_position_ms(const JfApp *app, int elapsed_ms);
 
 /** A track further than this into its length restarts on PREV; before it, PREV goes to the previous entry. */
 #define JF_PREV_RESTART_MS 3000
+
+/** One FFWD / REWIND step and one Left/Right press on the Now Playing screen: the same 10 s. */
+#define JF_SEEK_STEP_MS 10000
+
+/** The event a Bluetooth media key stands for, by the same events the on-screen buttons send (one implementation per action).
+ *  `pos_ms` = jf_position_ms() now.  Returns false (ev untouched) when the key does nothing: no queue, PLAY while playing, PAUSE while
+ *  paused or stopped, STOP or FFWD/REWIND while nothing plays or is paused.  PLAY also restarts a STOPPED / ended track (the core's
+ *  PAUSE event does that).  PREV/PAUSE need .played_ms: jellyfin.c fills it from the position, as for the buttons. */
+bool jf_media_event(const JfApp *app, InputMedia m, int pos_ms, JfEvent *ev);
 
 /** A source of 32 random bits; tests pass their own. */
 typedef uint32_t (*JfRng)(void *ctx);

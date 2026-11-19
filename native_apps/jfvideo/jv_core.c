@@ -64,6 +64,21 @@ void jv_core_init(JvCore *c, const char *conf_path, const char *reuse_path, cons
 
 long jv_core_position(const JvCore *c) { return c->seek_pending ? c->seek_target_ms : c->pos_ms; }
 bool jv_core_playing(const JvCore *c) { return c->screen == JV_SCR_PLAYER; }
+
+JvEventType jv_media_event(InputMedia act, JvPlayState st, JvScreen scr, int *arg)
+{
+    if (arg) *arg = 0;
+    if (scr != JV_SCR_PLAYER || (st != JV_PLAY_PLAYING && st != JV_PLAY_PAUSED)) return JV_EV_NONE;
+    switch (act) {
+    case INPUT_MEDIA_PLAYPAUSE: return JV_EV_PAUSE;
+    case INPUT_MEDIA_PLAY:      return st == JV_PLAY_PAUSED ? JV_EV_PAUSE : JV_EV_NONE;
+    case INPUT_MEDIA_PAUSE:     return st == JV_PLAY_PLAYING ? JV_EV_PAUSE : JV_EV_NONE;
+    case INPUT_MEDIA_STOP:      return JV_EV_STOP;
+    case INPUT_MEDIA_FFWD:      if (arg) *arg = 1;  return JV_EV_SEEK_STEP;
+    case INPUT_MEDIA_REWIND:    if (arg) *arg = -1; return JV_EV_SEEK_STEP;
+    default:                    return JV_EV_NONE;
+    }
+}
 void jv_note_view(JvCore *c, int top, int cursor) { c->view_top = top; c->view_cursor = cursor; }
 
 /* ── requests ──────────────────────────────────────────────────────────── */

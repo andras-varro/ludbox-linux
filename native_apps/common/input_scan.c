@@ -53,7 +53,22 @@ InputKind input_classify(const InputCaps *caps, const char *name) {
     if (input_caps_is_keyboard(caps))
         return INPUT_KIND_KEYBOARD;
 
+    if (input_caps_has_media(caps))
+        return INPUT_KIND_MEDIA;
+
     return INPUT_KIND_NONE;
+}
+
+bool input_caps_has_media(const InputCaps *caps) {
+    if (!caps || !input_caps_test(caps->ev, EV_KEY))
+        return false;
+    static const int media_keys[] = {
+        KEY_PLAYPAUSE, KEY_PLAYCD, KEY_PAUSECD, KEY_STOPCD,
+        KEY_NEXTSONG, KEY_PREVIOUSSONG, KEY_FASTFORWARD, KEY_REWIND
+    };
+    for (int k = 0; k < (int)(sizeof(media_keys) / sizeof(media_keys[0])); k++)
+        if (input_caps_test(caps->key, media_keys[k])) return true;
+    return false;
 }
 
 bool input_caps_is_keyboard(const InputCaps *caps) {

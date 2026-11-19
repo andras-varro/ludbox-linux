@@ -203,8 +203,9 @@ static const int g_scan_cap[INPUT_KIND_COUNT] = {
     [INPUT_KIND_PAD]      = GAMEPAD_MAX_PADS,
     [INPUT_KIND_KEYBOARD] = GAMEPAD_MAX_PER_KIND,
     [INPUT_KIND_MOUSE]    = GAMEPAD_MAX_PER_KIND,
+    [INPUT_KIND_MEDIA]    = GAMEPAD_MAX_PER_KIND,
 };
-#define GAMEPAD_SCAN_SLOTS (GAMEPAD_MAX_PADS + 2 * GAMEPAD_MAX_PER_KIND)
+#define GAMEPAD_SCAN_SLOTS (GAMEPAD_MAX_PADS + 3 * GAMEPAD_MAX_PER_KIND)
 
 const int *gamepad_scan_caps(void) { return g_scan_cap; }
 
@@ -402,6 +403,11 @@ static void scan_devices(GamepadManager *gm) {
             seed_mouse_buttons(nd->fd, gm->mouse_btn[k]);
             announce_found(gm->announced_mouse[k], sizeof(gm->announced_mouse[k]),
                            "mouse", nd->name, nd->path);
+        } else if (nd->kind == INPUT_KIND_MEDIA) {
+            int k = gm->media_count++;
+            gm->media_fds[k] = nd->fd;
+            announce_found(gm->announced_media[k], sizeof(gm->announced_media[k]),
+                           "media keys", nd->name, nd->path);
         } else {
             close(nd->fd);   /* unreachable: input_scan keeps only capped kinds */
         }
@@ -420,6 +426,8 @@ static void scan_devices(GamepadManager *gm) {
                       k < gm->keyboard_count ? gm->keyboard_fds[k] : -1);
         announce_lost(gm->announced_mouse[k], "mouse",
                       k < gm->mouse_count ? gm->mouse_fds[k] : -1);
+        announce_lost(gm->announced_media[k], "media keys",
+                      k < gm->media_count ? gm->media_fds[k] : -1);
     }
 }
 
@@ -628,6 +636,7 @@ int gamepad_init(GamepadManager *gm) {
     }
     for (int k = 0; k < GAMEPAD_MAX_PER_KIND; k++) {
         gm->keyboard_fds[k] = gm->mouse_fds[k] = -1;
+        gm->media_fds[k] = -1;
         gm->keyboard_slot[k] = gm->mouse_slot[k] = -1;
     }
     gm->touch_region_count = 0;
@@ -665,11 +674,14 @@ void gamepad_close(GamepadManager *gm) {
     for (int k = 0; k < GAMEPAD_MAX_PER_KIND; k++) {
         if (gm->keyboard_fds[k] >= 0) close(gm->keyboard_fds[k]);
         if (gm->mouse_fds[k] >= 0)    close(gm->mouse_fds[k]);
+        if (gm->media_fds[k] >= 0)    close(gm->media_fds[k]);
         gm->keyboard_fds[k] = gm->mouse_fds[k] = -1;
+        gm->media_fds[k] = -1;
         gm->keyboard_slot[k] = gm->mouse_slot[k] = -1;
         gm->mouse_keys[k] = false;
     }
     gm->keyboard_count = gm->mouse_count = 0;
+    gm->media_count = 0;
     memset(gm->mouse_btn, 0, sizeof(gm->mouse_btn));
 }
 
@@ -1012,12 +1024,47 @@ int gamepad_take_keys(GamepadManager *gm, GamepadKeyEv *out, int cap) {
     return n;
 }
 
+/* A media key press (value 1 only: not the release, not autorepeat) queues its
+ * action; a full queue drops the newest.  No latch, no ButtonId. */
+static void note_media_key(GamepadManager *gm, int code, int value) {
+    InputMedia a = input_media_action(code);
+    if (value != 1 || a == INPUT_MEDIA_NONE || gm->media_q_n >= GAMEPAD_MEDIAQ_MAX)
+        return;
+    gm->media_q[gm->media_q_n++] = a;
+}
+
+InputMedia gamepad_take_media(GamepadManager *gm) {
+    if (gm->media_q_n <= 0) return INPUT_MEDIA_NONE;
+    InputMedia a = gm->media_q[0];
+    for (int i = 1; i < gm->media_q_n; i++) gm->media_q[i - 1] = gm->media_q[i];
+    gm->media_q_n--;
+    return a;
+}
+
+static void poll_media(GamepadManager *gm) {
+    for (int k = 0; k < gm->media_count; k++) {
+        if (gm->media_fds[k] < 0) continue;
+        struct input_event ev;
+        InputSynDrop sd = { false, false };
+        ssize_t r;
+        while ((r = read(gm->media_fds[k], &ev, sizeof(ev))) == (ssize_t)sizeof(ev)) {
+            if (input_syn_drop_skip(&sd, &ev)) continue;
+            if (ev.type != EV_KEY) continue;
+            if (ev.value == 1 && hw_blank_note_activity()) continue;
+            hw_blank_keepalive();
+            note_media_key(gm, ev.code, ev.value);
+        }
+        if (read_gone(r)) drop_gone_fd(gm, &gm->media_fds[k]);
+    }
+}
+
 /* One keyboard EV_KEY, from a keyboard node or from a mouse node that carries a
  * keyboard: the typed-key queue and the latch.  In text entry a W/A/S/D/Space
  * press is a character, not a button; its release still goes through, so a key
  * held across the switch does not stay latched. */
 static void keyboard_key_event(GamepadManager *gm, bool *latched, int code, int value) {
     note_typed_key(gm, code, value);
+    note_media_key(gm, code, value);
     if (!(gm->text_entry && value != 0 && text_shadowed_key(code)))
         latch_key(latched, code, value != 0);
 }
@@ -1299,6 +1346,7 @@ void gamepad_poll(GamepadManager *gm, InputState *state,
         for (int i = 0; i < 4; i++)
             if (gm->bucket_axis[b][i]) hw_blank_keepalive();
     lost |= poll_keyboard(gm);        /* latches keys */
+    poll_media(gm);                   /* queues media actions */
     lost |= poll_mouse(gm, state);
     if (lost)                         /* SYN_DROPPED: events were discarded */
         resync_levels(gm);

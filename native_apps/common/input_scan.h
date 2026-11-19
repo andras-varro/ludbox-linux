@@ -34,8 +34,39 @@ typedef enum {
     INPUT_KIND_KEYBOARD,
     INPUT_KIND_MOUSE,
     INPUT_KIND_PAD,
+    INPUT_KIND_MEDIA,      /* a media-key source (Bluetooth AVRCP link, consumer-control
+                              node): media keys and no keyboard/pad/mouse shape */
     INPUT_KIND_COUNT
 } InputKind;
+
+/* Abstract media actions. Not ButtonIds: delivered by gamepad_take_media(). */
+typedef enum {
+    INPUT_MEDIA_NONE = 0,
+    INPUT_MEDIA_PLAYPAUSE,  /* KEY_PLAYPAUSE (toggle) */
+    INPUT_MEDIA_PLAY,       /* KEY_PLAYCD: play / resume */
+    INPUT_MEDIA_PAUSE,      /* KEY_PAUSECD (an Echo's "stop" also sends this) */
+    INPUT_MEDIA_STOP,       /* KEY_STOPCD */
+    INPUT_MEDIA_NEXT,       /* KEY_NEXTSONG */
+    INPUT_MEDIA_PREV,       /* KEY_PREVIOUSSONG */
+    INPUT_MEDIA_FFWD,       /* KEY_FASTFORWARD */
+    INPUT_MEDIA_REWIND      /* KEY_REWIND */
+} InputMedia;
+
+/* PURE (header-inline, so a test that stubs input_scan.c still links). The action an
+ * evdev key code stands for; INPUT_MEDIA_NONE for any other. */
+static inline InputMedia input_media_action(int code) {
+    switch (code) {
+    case KEY_PLAYPAUSE:      return INPUT_MEDIA_PLAYPAUSE;
+    case KEY_PLAYCD:         return INPUT_MEDIA_PLAY;
+    case KEY_PAUSECD:        return INPUT_MEDIA_PAUSE;
+    case KEY_STOPCD:         return INPUT_MEDIA_STOP;
+    case KEY_NEXTSONG:       return INPUT_MEDIA_NEXT;
+    case KEY_PREVIOUSSONG:   return INPUT_MEDIA_PREV;
+    case KEY_FASTFORWARD:    return INPUT_MEDIA_FFWD;
+    case KEY_REWIND:         return INPUT_MEDIA_REWIND;
+    default:                 return INPUT_MEDIA_NONE;
+    }
+}
 
 #define INPUT_SCAN_LONG_BITS  (sizeof(unsigned long) * 8)
 #define INPUT_SCAN_NLONGS(x)  ((((x) - 1) / INPUT_SCAN_LONG_BITS) + 1)
@@ -90,6 +121,10 @@ bool input_name_is_touchscreen(const char *name);
 
 /* PURE. The keyboard rule alone: at least 20 of the 26 letter keys. */
 bool input_caps_is_keyboard(const InputCaps *caps);
+
+/* PURE. At least one media key in the capability bits. Tested after pad,
+ * mouse and keyboard, so a keyboard that has media keys stays a keyboard. */
+bool input_caps_has_media(const InputCaps *caps);
 
 /* PURE. What a node is, from its capability bits and its name. */
 InputKind input_classify(const InputCaps *caps, const char *name);

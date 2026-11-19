@@ -1142,7 +1142,7 @@ int jf_ui_input(JfUi *ui, const TouchState *ts, const InputState *in, Pointer *p
         if (zo.moved) ui->dirty = true;
         if (zo.back) emit(out, &n, max, JF_EV_BACK);
         if (zo.left_right) {   /* the same absolute JF_EV_SEEK as the bar: the core clamps the top, a clamp here keeps the bottom at 0 */
-            int target = ui->played_ms + zo.left_right * 10000;
+            int target = ui->played_ms + zo.left_right * JF_SEEK_STEP_MS;
             int k = emit(out, &n, max, JF_EV_SEEK);
             if (k >= 0) out[k].i = target < 0 ? 0 : target;
             ui->dirty = true;

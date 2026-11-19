@@ -1924,6 +1924,31 @@ void jf_queue_restore(JfApp *app, const JfItem *items, int n, int cur, int pos_m
     snprintf(app->queue_name, sizeof app->queue_name, "Queue: %.80s", app->queue[0].name);
 }
 
+bool jf_media_event(const JfApp *app, InputMedia m, int pos_ms, JfEvent *ev)
+{
+    if (app->queue_n == 0) return false;
+    JfPlayState s = app->play_state;
+    bool live = s == JF_PLAY_PLAYING || s == JF_PLAY_FETCHING;
+    bool held = live || s == JF_PLAY_PAUSED;
+    JfEventType t;
+    int target = 0;
+    switch (m) {
+    case INPUT_MEDIA_PLAYPAUSE: t = JF_EV_PAUSE; break;
+    case INPUT_MEDIA_PLAY:      if (live) return false; t = JF_EV_PAUSE; break;
+    case INPUT_MEDIA_PAUSE:     if (!live) return false; t = JF_EV_PAUSE; break;
+    case INPUT_MEDIA_STOP:      if (!held) return false; t = JF_EV_STOP; break;
+    case INPUT_MEDIA_NEXT:      t = JF_EV_NEXT; break;
+    case INPUT_MEDIA_PREV:      t = JF_EV_PREV; break;
+    case INPUT_MEDIA_FFWD:      if (!held) return false; t = JF_EV_SEEK; target = pos_ms + JF_SEEK_STEP_MS; break;
+    case INPUT_MEDIA_REWIND:    if (!held) return false; t = JF_EV_SEEK; target = pos_ms - JF_SEEK_STEP_MS; break;
+    default: return false;
+    }
+    memset(ev, 0, sizeof *ev);
+    ev->type = t;
+    ev->i = target < 0 ? 0 : target;
+    return true;
+}
+
 static void on_volume(JfApp *app, int delta, JfCmds *out)
 {
     int v = app->volume_step + delta;

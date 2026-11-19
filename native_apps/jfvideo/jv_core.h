@@ -26,6 +26,7 @@
 #include <stddef.h>
 #include "jf_api.h"
 #include "jf_login.h"
+#include "input_scan.h"   /* InputMedia */
 #include "jv_last.h"
 #include "jv_model.h"
 #include "jv_settings.h"
@@ -231,6 +232,10 @@ void jv_core_init(JvCore *c, const char *conf_path, const char *reuse_path, cons
 void jv_step(JvCore *c, const JvEvent *ev, long long now_ms, JvCmds *out);
 /** The position to draw: the pending seek target, else the last reported one. */
 long jv_core_position(const JvCore *c);
+/** The core event a Bluetooth media key stands for, JV_EV_NONE for none: PLAY resumes only a paused film, PAUSE pauses only a playing one,
+ *  PLAYPAUSE toggles, STOP is the overlay STOP, FFWD / REWIND are one JV_EV_SEEK_STEP (`*arg` = +1 / -1; arg may be NULL).  NEXT and PREV
+ *  are ignored (the player has no item to step to).  Nothing but the PLAYER screen with a film playing or paused acts. */
+JvEventType jv_media_event(InputMedia act, JvPlayState st, JvScreen scr, int *arg);
 /** The list view of the screen showing (scroll top and cursor row), so a push can remember where to come back to. */
 void jv_note_view(JvCore *c, int top, int cursor);
 /** True when the PLAYER screen is up. */

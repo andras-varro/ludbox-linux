@@ -178,6 +178,9 @@ typedef struct {
 /* One typed key, as gamepad_take_keys() hands it over: the evdev code with the
  * Shift and Caps Lock state at the press.  `repeat` is the autorepeat value 2. */
 #define GAMEPAD_KEYQ_MAX 16
+
+/* Queued media actions awaiting gamepad_take_media(); past this the newest is dropped. */
+#define GAMEPAD_MEDIAQ_MAX 8
 typedef struct {
     int  code;
     bool shift;
@@ -322,6 +325,14 @@ typedef struct {
     bool caps_on;                 /* Caps Lock toggled by its press */
     GamepadKeyEv key_q[GAMEPAD_KEYQ_MAX];
     int  key_q_n;
+
+    /* Media-key source (INPUT_KIND_MEDIA nodes, and the media keys of any keyboard):
+     * presses queue abstract actions for gamepad_take_media(); no ButtonId, no slot. */
+    int  media_fds[GAMEPAD_MAX_PER_KIND];
+    int  media_count;
+    InputMedia media_q[GAMEPAD_MEDIAQ_MAX];
+    int  media_q_n;
+    char announced_media[GAMEPAD_MAX_PER_KIND][GAMEPAD_ANNOUNCE_LEN];
 } GamepadManager;
 
 /* One connected pad or keyboard, as gamepad_devices() lists it. */
@@ -458,6 +469,16 @@ void gamepad_text_entry(GamepadManager *gm, bool on);
 /* Move up to `cap` queued key presses (oldest first) into `out`; returns how
  * many.  Always 0 unless gamepad_text_entry(gm, true) is in force. */
 int gamepad_take_keys(GamepadManager *gm, GamepadKeyEv *out, int cap);
+
+/* Media keys (Bluetooth AVRCP link such as an Amazon Echo, a consumer-control node,
+ * or the media keys of a keyboard): pop the oldest queued action, or
+ * INPUT_MEDIA_NONE.  One action per key PRESS (releases and autorepeat are
+ * ignored).  Opt-in: no ButtonId, mouse or keyboard_connected change, so an app
+ * that never calls this is unaffected.  KEY_PLAYCD -> INPUT_MEDIA_PLAY,
+ * KEY_PAUSECD -> PAUSE, KEY_PLAYPAUSE -> PLAYPAUSE, KEY_STOPCD -> STOP,
+ * KEY_NEXTSONG -> NEXT, KEY_PREVIOUSSONG -> PREV, FASTFORWARD -> FFWD,
+ * REWIND -> REWIND.  An Echo sends PAUSE for both "pause" and "stop". */
+InputMedia gamepad_take_media(GamepadManager *gm);
 
 /**
  * Configure touch button regions for virtual controls.
