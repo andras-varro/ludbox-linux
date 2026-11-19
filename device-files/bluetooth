@@ -240,8 +240,11 @@ start_watch() {
 
 is_loaded() { lsmod | cut -d' ' -f1 | grep -qx "$(echo "${1%.ko}" | tr - _)"; }
 
+# uinput: bluetoothd's AVRCP (profiles/audio/avctp.c) creates one input device per connected
+# sink through /dev/uinput; without the module every connect logs "AVRCP: failed to init
+# uinput" (measured on .115 with an Echo Dot, 2026-11-18). It is =m and nothing else loads it.
 load_modules() {
-  for m in btusb rfcomm bnep hidp uhid; do
+  for m in btusb rfcomm bnep hidp uhid uinput; do
     is_loaded "$m" || modprobe "$m" 2>/tmp/bt-insmod.err || echo "  $m: FAILED -- $(cat /tmp/bt-insmod.err)"
   done
   rm -f /tmp/bt-insmod.err
