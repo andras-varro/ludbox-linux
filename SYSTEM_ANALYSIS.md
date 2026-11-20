@@ -2132,6 +2132,7 @@ ScummVM went from 80 % to 32 % CPU using these; the VNC client independently reu
 - border-only clearing, and skipping `fb_swap` entirely on unchanged frames
 - a rotated (portrait) copy writes the **uncached framebuffer sequentially** and reads **strided from the cached back buffer**: the earlier order cost 63 % CPU against 54 % for Frogger in portrait on `.188` (landscape 51 %; `/proc/<pid>/stat` over 10 s, 2026-10-02; the old order's exact access pattern was not re-read, so the mechanism is **[inferred]**) (`framebuffer.c` `fb_swap`, byte-identical by `fb_rotate_test`)
 - 16bpp RGB565 to halve write bandwidth
+- **never write the mapped front buffer pixel by pixel**: an 800x480 32bpp frame written per pixel costs 20.4 ms, one cached 800-px row memcpy'd twice per source row costs 3.4 ms, and upscaling into the back buffer + `fb_swap` costs 14.3 ms (6.0 + 8.3; standalone bench, apps stopped, `.188` 2026-11-20); `fb_present_indexed2x()` is that cached-row path
 - NEON `vst1q_u16` 8-pixel blits
 - row deduplication via an L1-resident temp row (~57 % of scaled rows are duplicates)
 
