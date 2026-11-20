@@ -82,6 +82,7 @@
 #include "audio_gen.h"
 #include "audio_eq.h"
 #include "audio_enh.h"
+#include "audio_tap.h"
 
 /* ── Constants ──────────────────────────────────────────────────────────── */
 
@@ -245,6 +246,7 @@ typedef struct {
     uint32_t    sink_errors;
     uint32_t    refused;
     uint32_t    services;
+    AudioTap    tap;           /**< visualiser ring, off until audio_out_tap_enable() */
     uint32_t    drain_waits;
     long        last_frames;
 } AudioOut;
@@ -319,6 +321,14 @@ AudioOutErr audio_out_alsa_classify(int err);
  * and closes and reopens through its own path, which re-resolves the device.
  */
 bool audio_out_device_lost(const AudioOut *out);
+
+/** Visualiser tap: while on, every service pushes its post-EQ, post-volume PCM
+ *  (mixed to mono) into a 512-sample ring.  Off by default; `audio_out_open()`
+ *  resets it, so re-enable after a reopen.  The samples run up to the device
+ *  queue's lead ahead of what is audible. */
+void audio_out_tap_enable(AudioOut *out, bool on);
+/** Copies up to `n` (<= 512) most recent tap samples, oldest first; returns the count. */
+int  audio_out_tap_read(const AudioOut *out, int16_t *dst, int n);
 
 /**
  * Resolve the device and open it through `audio_out_open_default()` — the opener

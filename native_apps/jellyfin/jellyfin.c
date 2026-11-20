@@ -23,6 +23,7 @@
 #include "jf_app.h"
 #include "jf_art.h"
 #include "jf_ui.h"
+#include "jf_visu.h"
 #include "jf_queue_store.h"
 #include "avrcp_player.h"
 
@@ -40,6 +41,8 @@ static Logger logger;      /* jf_api logs each request: kind, status, error, ms 
 static JfUi  ui;
 static Audio audio;
 static bool  audio_ok;
+static JfVisu visu;        /* the visualiser engine, alive only while the mode is open */
+static bool  visu_on;      /* visu holds an initialised engine */
 static bool  track_live;   /* a stream was started and its end is still to be reported */
 static const AudioFdIo stream_io = { http_stream_read, http_stream_close };
 static uint32_t track_t0;
@@ -333,6 +336,7 @@ int main(int argc, char *argv[])
     InputState in;
     memset(&in, 0, sizeof in);
     bool first = true;
+    bool keep_awake = false;   /* hw_blank_set_enabled(false) is in force */
 
     while (running) {
         uint32_t now = get_time_ms();
@@ -406,6 +410,39 @@ int main(int argc, char *argv[])
         avrcp_player_set_status(avrcp, (app.play_state == JF_PLAY_PLAYING || app.play_state == JF_PLAY_FETCHING) ? AVRCP_PLAYING
                                        : app.play_state == JF_PLAY_PAUSED ? AVRCP_PAUSED : AVRCP_STOPPED);
 
+        /* The full-screen visualiser (jf_ui_visu_active): the loop, not jf_ui_draw, feeds and presents it.  The engine and the
+         * audio tap live between the opening and the closing edge; the panel stays awake only while music PLAYS. */
+        bool vis = jf_ui_visu_active(&ui);
+        if (vis && !visu_on) {
+            visu_on = jf_visu_init(&visu, fb.width / 2, fb.height / 2);
+            if (!visu_on) { fprintf(stderr, JF_APP_BIN ": visualiser out of memory\n"); ui.visu_up = false; ui.dirty = true; vis = false; }
+        } else if (!vis && visu_on) {
+            jf_visu_free(&visu);
+            visu_on = false;
+            if (audio_ok) audio_out_tap_enable(&audio.out, false);
+        }
+        {
+            bool keep = jf_visu_keeps_awake(vis, app.play_state);
+            if (keep != keep_awake) {
+                if (!keep) hw_blank_keepalive();   /* restart the idle clock, or the first poll would blank at once */
+                hw_blank_set_enabled(!keep);
+                keep_awake = keep;
+            }
+        }
+        if (vis) {
+            int16_t smp[512];
+            int sn = 0;
+            if (audio_ok && audio_out_is_open(&audio.out)) {
+                audio_out_tap_enable(&audio.out, true);   /* every iteration: a reopen resets the tap */
+                sn = audio_out_tap_read(&audio.out, smp, 512);
+            }
+            jf_visu_step(&visu, smp, sn, now);
+            fb_present_indexed2x(&fb, jf_visu_image(&visu), fb.width / 2, fb.height / 2, jf_visu_palette(&visu));
+            pointer_invalidate(&ptr);   /* the present overwrote the cursor; none is painted while this is up */
+            usleep(FRAME_DELAY_ACTIVE_US);
+            continue;
+        }
+
         bool redraw = jf_ui_take_dirty(&ui);
         if (redraw) {
             jf_ui_draw(&ui);
@@ -432,6 +469,8 @@ int main(int argc, char *argv[])
         for (int i = 0; i < 20; i++) { audio_pump(&audio); usleep(16667); }
         audio_close(&audio);
     }
+    if (visu_on) { jf_visu_free(&visu); visu_on = false; }
+    if (keep_awake) hw_blank_set_enabled(true);
     jf_art_shutdown();
     jf_api_free(&api);
     logger_close(&logger);

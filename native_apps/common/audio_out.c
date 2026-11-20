@@ -598,6 +598,8 @@ long audio_out_service(AudioOut *out)
         out->fill(out->fill_ctx, buf, want, out->channels);
 
     attenuate(out, buf, samples);
+    if (out->tap.on)   /* visualiser tap: post-EQ/volume, ahead of the audible by the queue lead */
+        audio_tap_push_interleaved(&out->tap, buf, want, out->channels);
 
     return push(out, buf, want, &AOPOL_SERVICE);
 }
@@ -1640,4 +1642,16 @@ bool audio_out_usb_returned(AudioOut *out)
     fprintf(stderr, "audio_out: %s is available — leaving %s at %s\n",
             device_label(target), device_label(out->open_path), wall_hms(hms));
     return true;
+}
+
+void audio_out_tap_enable(AudioOut *out, bool on)
+{
+    if (!out) return;
+    if (on && !out->tap.on) audio_tap_clear(&out->tap);
+    out->tap.on = on;
+}
+
+int audio_out_tap_read(const AudioOut *out, int16_t *dst, int n)
+{
+    return out ? audio_tap_read(&out->tap, dst, n) : 0;
 }

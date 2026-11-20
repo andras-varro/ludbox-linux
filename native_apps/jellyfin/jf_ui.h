@@ -28,9 +28,10 @@
 #define JF_UI_ROW3   3     /* browse screens: SEARCH, NOW PLAYING, PLAY ALL; the root: SEARCH, NOW PLAYING, SETTINGS */
 #define JF_UI_ROW4   4     /* an album's or playlist's tracks: those three and + PLAYLIST (a quarter of the width each; the layout has no screen argument, so JF_UI_ROW3 stays) */
 #define JF_UI_ART   120    /* now playing: the cover square, the height of the info block */
-#define JF_UI_NP     10    /* now playing, one row (wraps in portrait): PREV, PLAY/PAUSE, STOP, NEXT, QUEUE, MIX, I-MIX, EQ, VOL +, VOL - */
+#define JF_UI_NP     11    /* now playing, one row (wraps in portrait): PREV, PLAY/PAUSE, STOP, NEXT, QUEUE, MIX, I-MIX, EQ, VISU, VOL -, VOL + */
 #define JF_UI_NP_EQ  7     /* the EQ button's index in that row */
-#define JF_UI_QROW  11     /* the queue view of now playing: PREV, PLAY/PAUSE, STOP, NEXT, SAVE, CLR, RND, REMOVE, EQ, VOL +, VOL - */
+#define JF_UI_NP_VISU 8    /* the VISU button's index in that row */
+#define JF_UI_QROW  11     /* the queue view of now playing: PREV, PLAY/PAUSE, STOP, NEXT, SAVE, CLR, RND, REMOVE, EQ, VOL -, VOL + */
 #define JF_UI_QROW_EQ 8    /* the EQ button's index in that row */
 #define JF_UI_FIELDS 3     /* sign-in: SERVER, USER, PASSWORD */
 #define JF_UI_ABAR   6     /* action bar: PLAY, PLAY NEXT, ADD QUEUE, MIX, I-MIX, + PLAYLIST */
@@ -149,6 +150,7 @@ typedef struct {
     bool restore_pend;                   /* a BACK came: put the list view back once the rows are loaded */
     EqPanel eq;                          /* the equaliser panel (common/eq_panel.h), full screen while eq_up */
     bool eq_up;
+    bool visu_up;                        /* the full-screen visualiser is open: the loop paints it (jf_ui_visu_active), not jf_ui_draw */
     bool eq_apply, eq_save;              /* a gain set for jf_ui_eq_take(): apply it live; also save it */
     int  eq_out[EQ_BANDS];
     AudioEnh enh_out;                    /* the enhancer settings that go with eq_out (read with jf_ui_enh_out) */
@@ -182,5 +184,12 @@ bool jf_ui_take_dirty(JfUi *ui);
  *  rectangle, so a pointer painted over the front buffer must be repainted.  Call after jf_ui_take_dirty() returned false (a
  *  full frame carries the text).  False with the text moving another section sets dirty, so the next frame draws it all. */
 bool jf_ui_take_info(JfUi *ui, UiRect *r);
+
+/** True while the full-screen visualiser is open: the loop then feeds and presents the engine each iteration, and
+ *  jf_ui_take_dirty / jf_ui_take_info stay quiet.  The closing edge sets dirty, so the next frame is Now Playing. */
+bool jf_ui_visu_active(const JfUi *ui);
+
+/** Whether the panel should be kept awake: the visualiser is open and the music is PLAYING (nobody touches the panel). */
+static inline bool jf_visu_keeps_awake(bool visu_up, JfPlayState st) { return visu_up && st == JF_PLAY_PLAYING; }
 
 #endif /* ARCA_JF_UI_H */

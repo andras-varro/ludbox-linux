@@ -34,7 +34,9 @@
 #define TAG_WITH_MAX 3    /* most lines the WITH (performers) part wraps onto */
 #define TAG_AA_MAX   2    /* most lines the ALBUM ARTIST part wraps onto */
 #define TAG_ROWS_MAX JF_TAG_LINES_MAX  /* conductor, work, performers, album artist, year and genres */
-#define NP_MIN_W  72   /* narrowest now-playing button; 10 of them fit one row at 774 px or more */
+#define NP_MIN_W  72   /* narrowest now-playing button other than the four transport glyphs */
+#define NP_TR_W   52   /* a transport button (PREV, PLAY/PAUSE, STOP, NEXT) in the single landscape row: a glyph needs little room */
+#define NP_WRAP_W 66   /* narrowest now-playing button when the row wraps (portrait): two rows of six at 446 px; a label that no longer fits drops to scale 1 */
 #define QR_MIN_W  56   /* narrowest queue-view button; 11 of them fit one row at 676 px or more (65 px each on the unit's 780) */
 #define NP_ICON    22   /* the now-playing glyphs: a square box in the button's middle */
 
@@ -57,6 +59,24 @@ static int row_layout(UiRect *out, int count, int min_w, int sl, int sw, int row
         out[i] = rect_of(sl + c * (wn + GAP), rowy - (rows - 1 - r) * (JF_UI_BTN_H + GAP), wn, JF_UI_BTN_H);
     }
     return rows;
+}
+
+/* The now-playing row: in one row the four transport glyphs take NP_TR_W each and the other buttons share the rest (none
+ * under NP_MIN_W); when that does not fit (portrait) the eleven wrap into the fewest equal rows, as row_layout does. */
+static void np_layout(UiRect *out, int sl, int sw, int rowy)
+{
+    const int n_tr = 4, n_rest = JF_UI_NP - n_tr;
+    int rest_w = (sw - n_tr * NP_TR_W - (JF_UI_NP - 1) * GAP) / n_rest;
+    if (rest_w < NP_MIN_W) {
+        row_layout(out, JF_UI_NP, NP_WRAP_W, sl, sw, rowy);
+        return;
+    }
+    int x = sl;
+    for (int i = 0; i < JF_UI_NP; i++) {
+        int w = i < n_tr ? NP_TR_W : rest_w;
+        out[i] = rect_of(x, rowy, w, JF_UI_BTN_H);
+        x += w + GAP;
+    }
 }
 
 void jf_ui_layout(JfLayout *L, const JfExtents *e)
@@ -86,7 +106,7 @@ void jf_ui_layout(JfLayout *L, const JfExtents *e)
         L->mixb[i] = rect_of(sl + i * ((sw - GAP) / 2 + GAP), rowy, (sw - GAP) / 2, JF_UI_BTN_H);
     /* now playing and its queue view: one row of buttons, none narrower than the minimum; when the width does not hold
      * them all (portrait) they wrap into the fewest equal rows, stacked upward from the button row */
-    row_layout(L->np, JF_UI_NP, NP_MIN_W, sl, sw, rowy);
+    np_layout(L->np, sl, sw, rowy);
     L->qrow_rows = row_layout(L->qrow, JF_UI_QROW, QR_MIN_W, sl, sw, rowy);
     L->list_q = L->list;
     L->list_q.h -= (L->qrow_rows - 1) * (JF_UI_BTN_H + GAP);
@@ -290,7 +310,7 @@ void jf_ui_init(JfUi *ui, Framebuffer *fb, TouchInput *touch, GamepadManager *gm
     static const char *t3[JF_UI_ROW3] = { "SEARCH", "NOW PLAYING", "PLAY ALL" };
     for (int i = 0; i < JF_UI_ROW3; i++) style(&ui->row3[i], ui->L.row3[i], t3[i], 2);
     static const char *ta[JF_UI_ABAR] = { "PLAY", "PLAY NEXT", "ADD QUEUE", "MIX", "I-MIX", "+ PLAYLIST" };
-    static const char *tn[JF_UI_NP] = { "", "", "", "", "QUEUE", "MIX", "I-MIX", "EQ", "VOL+", "VOL-" };
+    static const char *tn[JF_UI_NP] = { "", "", "", "", "QUEUE", "MIX", "I-MIX", "EQ", "VISU", "VOL-", "VOL+" };
     static const char *tmini[JF_UI_MINI] = { "PAUSE", "VOL -", "VOL +" };
     for (int i = 0; i < JF_UI_MINI; i++) style(&ui->mini_b[i], ui->L.mini_btn[i], tmini[i], 2);
     for (int i = 0; i < JF_UI_MINI; i++) style(&ui->pmenu[i], ui->L.mini_btn[i], "", 2);
@@ -301,8 +321,9 @@ void jf_ui_init(JfUi *ui, Framebuffer *fb, TouchInput *touch, GamepadManager *gm
         const char *t4 = i < JF_UI_ROW3 ? t3[i] : "+ PLAYLIST";
         style(&ui->row4[i], ui->L.row4[i], t4, 6 * (int)strlen(t4) * 2 <= ui->L.row4[i].w - 12 ? 2 : 1);
     }
-    for (int i = 0; i < JF_UI_NP; i++) style(&ui->np[i], ui->L.np[i], tn[i], 2);
-    static const char *tq[JF_UI_QROW] = { "", "", "", "", "SAVE", "CLR", "RND", "REMOVE", "EQ", "VOL+", "VOL-" };
+    for (int i = 0; i < JF_UI_NP; i++)
+        style(&ui->np[i], ui->L.np[i], tn[i], 6 * (int)strlen(tn[i]) * 2 <= ui->L.np[i].w - 12 ? 2 : 1);
+    static const char *tq[JF_UI_QROW] = { "", "", "", "", "SAVE", "CLR", "RND", "REMOVE", "EQ", "VOL-", "VOL+" };
     /* a label whose ink at scale 2 would leave no margin in its button (REMOVE in the 65 px buttons) drops to scale 1 */
     for (int i = 0; i < JF_UI_QROW; i++)
         style(&ui->qrow[i], ui->L.qrow[i], tq[i], 6 * (int)strlen(tq[i]) * 2 <= ui->L.qrow[i].w - 12 ? 2 : 1);
@@ -339,8 +360,11 @@ void jf_ui_set_played(JfUi *ui, int played_ms)
 
 void jf_ui_mark_dirty(JfUi *ui) { ui->dirty = true; }
 
+bool jf_ui_visu_active(const JfUi *ui) { return ui->visu_up; }
+
 bool jf_ui_take_dirty(JfUi *ui)
 {
+    if (ui->visu_up) return false;   /* the loop paints the visualiser; dirty stays set for the closing edge */
     bool d = ui->dirty || button_take_dirty();
     ui->dirty = false;
     if (d) ui->info_dirty = false;   /* the full frame carries the new text */
@@ -349,7 +373,7 @@ bool jf_ui_take_dirty(JfUi *ui)
 
 bool jf_ui_take_info(JfUi *ui, UiRect *r)
 {
-    if (!ui->info_dirty) return false;
+    if (ui->visu_up || !ui->info_dirty) return false;
     ui->info_dirty = false;
     if (top_bar_info_present(ui->fb, &ui->bar, r)) return true;   /* patched and presented */
     ui->dirty = true;                /* the text moved another section: the next frame draws it all */
@@ -677,7 +701,7 @@ static void row3_act(JfUi *ui, Pointer *ptr, int i, JfEvent *out, int *n, int ma
 }
 
 /* The queue screen's button row: 0..3 the transport (as on now playing), 4 SAVE (as playlist), 5 CLR (clear, after a confirm),
- * 6 RND (shuffle), 7 REMOVE (the cursor row, no confirm), 8 EQ, 9 VOL +, 10 VOL -.  Moving a row is Shift + Up / Down
+ * 6 RND (shuffle), 7 REMOVE (the cursor row, no confirm), 8 EQ, 9 VOL -, 10 VOL +.  Moving a row is Shift + Up / Down
  * and the drag, both through queue_move. */
 #define Q_BTNS JF_UI_QROW
 static void queue_move(JfUi *ui, int delta, JfEvent *out, int *n, int max)
@@ -721,17 +745,17 @@ static void queue_row_act(JfUi *ui, Pointer *ptr, int i, uint32_t now, JfEvent *
         ui->dirty = true;
     }
     else if (i == JF_UI_QROW_EQ) eq_open(ui, now);
-    else emit(out, n, max, i == 9 ? JF_EV_VOL_UP : JF_EV_VOL_DOWN);
+    else emit(out, n, max, i == 9 ? JF_EV_VOL_DOWN : JF_EV_VOL_UP);
 }
 
 static void abar_act(int i, int row, JfEvent *out, int *n, int max);
 
 /* The now-playing buttons: PREV, PLAY/PAUSE, STOP, NEXT, QUEUE, MIX and INSTANT MIX (of the playing track), EQ (opens the
- * equaliser panel, handled in eq_open), VOL +, VOL -. */
+ * equaliser panel, handled in eq_open), VISU (the visualiser), VOL -, VOL +. */
 static void np_act(int i, JfEvent *out, int *n, int max)
 {
     static const JfEventType t[JF_UI_NP] = { JF_EV_NONE, JF_EV_NONE, JF_EV_NONE, JF_EV_NONE, JF_EV_OPEN_QUEUE, JF_EV_NONE,
-                                             JF_EV_NONE, JF_EV_NONE, JF_EV_VOL_UP, JF_EV_VOL_DOWN };
+                                             JF_EV_NONE, JF_EV_NONE, JF_EV_NONE, JF_EV_VOL_DOWN, JF_EV_VOL_UP };
     if (i < 4) transport_act(i, out, n, max);
     else if (i == 5 || i == 6) abar_act(i - 2, -1, out, n, max);   /* MIX = abar 3, INSTANT MIX = abar 4 */
     else emit(out, n, max, t[i]);
@@ -796,6 +820,7 @@ bool jf_ui_eq_take(JfUi *ui, int gains[EQ_BANDS], bool *save)
 static void np_press(JfUi *ui, int i, uint32_t now, JfEvent *out, int *n, int max)
 {
     if (i == JF_UI_NP_EQ) eq_open(ui, now);
+    else if (i == JF_UI_NP_VISU) { ui->visu_up = true; touch_guard_screen_changed(&ui->guard, now); }
     else np_act(i, out, n, max);
 }
 
@@ -994,7 +1019,7 @@ int jf_ui_input(JfUi *ui, const TouchState *ts, const InputState *in, Pointer *p
          * starves the audio feed, so the music breaks up once a second.  The sample is still taken, and the close path
          * sets dirty, so the bar shows fresh values once the dialog is gone.  The header picker's popup starts below
          * the bar's rule (top_pick.c tp_popup_rect), so it never covers the info rect: the bar patch is still right. */
-        if (!(ui->eq_up || app->overlay || app->confirm != JF_CONFIRM_NONE || ui->dlg_up || ui->cdlg_up))
+        if (!(ui->eq_up || ui->visu_up || app->overlay || app->confirm != JF_CONFIRM_NONE || ui->dlg_up || ui->cdlg_up))
             ui->info_dirty = true;   /* no dialog up: the bar patch; under a dialog the bar waits for its close */
     }
     /* a queue can start or empty on an open screen: the list makes room for the strip, or takes it back */
@@ -1008,6 +1033,20 @@ int jf_ui_input(JfUi *ui, const TouchState *ts, const InputState *in, Pointer *p
     if (app->tags_seq != ui->seen_tags) { ui->seen_tags = app->tags_seq; if (app->screen == JF_SCR_NOWPLAYING) ui->dirty = true; }
     if (app->fmt_seq != ui->seen_fmt) { ui->seen_fmt = app->fmt_seq; if (app->screen == JF_SCR_NOWPLAYING) ui->dirty = true; }
 
+    if (ui->visu_up && (app->screen != JF_SCR_NOWPLAYING || app->overlay || app->confirm != JF_CONFIRM_NONE)) {
+        ui->visu_up = false;           /* the screen moved on (or an error / confirm needs the UI): the full redraw follows */
+        ui->dirty = true;
+    }
+    if (ui->visu_up) {
+        /* Full-screen visualiser, drawn by the loop (jf_ui_visu_active), not by jf_ui_draw.  Only leaving is handled here:
+         * a touch press, Back / Esc, or the pad's B.  Media keys never come through here, jellyfin.c's loop takes them. */
+        if ((ts && ts->pressed) || bp(in, BTN_ID_BACK) || bp(in, BTN_ID_CANCEL)) {
+            ui->visu_up = false;
+            ui->dirty = true;
+            touch_guard_screen_changed(&ui->guard, now);   /* the finger that closed it must not press what is underneath */
+        }
+        return n;
+    }
     if (app->overlay) {
         overlay_input(ui, ts, in, now, out, &n, max);
         return n;
@@ -1770,6 +1809,7 @@ void jf_ui_draw(JfUi *ui)
     const JfApp *app = ui->app;
     Framebuffer *fb = ui->fb;
     fb_clear(fb, BG);
+    if (ui->visu_up) return;             /* defensive: the loop paints the visualiser itself */
     if (ui->eq_up) {
         eq_panel_draw(&ui->eq, fb);
         if (app->overlay && ui->dlg_up) modal_dialog_draw(&ui->dlg, fb);

@@ -779,6 +779,66 @@ void fb_swap(Framebuffer *fb) {
     hw_blank_poll();
 }
 
+void fb_present_indexed2x(Framebuffer *fb, const uint8_t *src, int sw, int sh,
+                          const uint32_t pal[256]) {
+    if (src == NULL || pal == NULL || sw < 0 || sh < 0)
+        return;
+    const int lw = (int)fb->width, lh = (int)fb->height;
+    // Columns / rows that carry image data; the rest of the surface is black.
+    const int cw = (2 * sw < lw) ? 2 * sw : lw;
+    const int ch = (2 * sh < lh) ? 2 * sh : lh;
+
+    if (fb->double_buffering && fb->back_buffer != NULL && fb->buffer != NULL &&
+        !fb->portrait_mode && fb->bytes_per_pixel == 4 && lw > 0 && lh > 0) {
+        // One cached row, built once and written to the uncached front buffer as
+        // two ascending memcpy runs (a pixel-by-pixel store there costs 20 ms).
+        static uint32_t *row = NULL;
+        static int row_cap = 0;
+        if (row_cap < lw) {
+            uint32_t *n = (uint32_t *)realloc(row, (size_t)lw * 4);
+            if (n != NULL) { row = n; row_cap = lw; }
+        }
+        if (row_cap >= lw) {
+            const size_t row_bytes = (size_t)lw * 4;
+            uint8_t *dst = (uint8_t *)fb->buffer
+                         + (size_t)fb->view_y * fb->line_length
+                         + (size_t)fb->view_x * 4;
+            for (int y = 0; y < lh; y += 2) {
+                if (y < ch) {
+                    const uint8_t *s = src + (size_t)(y >> 1) * (size_t)sw;
+                    for (int x = 0; x < cw; x++) row[x] = pal[s[x >> 1]] & 0x00FFFFFF;
+                    for (int x = cw; x < lw; x++) row[x] = 0;
+                } else {
+                    memset(row, 0, row_bytes);
+                }
+                memcpy(dst, row, row_bytes);
+                dst += fb->line_length;
+                if (y + 1 < lh) {
+                    memcpy(dst, row, row_bytes);
+                    dst += fb->line_length;
+                }
+            }
+            fb_overtemp_poll(fb);
+            hw_blank_poll();
+            return;
+        }
+    }
+
+    // Fallback (portrait, 16bpp, no double buffer, no row buffer): the existing
+    // store helper into the drawing target, then the normal present.
+    void *target = fb_target(fb);
+    if (target == NULL)
+        return;
+    const bool is16 = FB_IS_16BPP(fb);
+    for (int y = 0; y < lh; y++) {
+        const uint8_t *s = (y < ch) ? src + (size_t)(y >> 1) * (size_t)sw : NULL;
+        size_t idx = (size_t)y * (size_t)lw;
+        for (int x = 0; x < lw; x++, idx++)
+            fb_store(target, idx, (s != NULL && x < cw) ? (pal[s[x >> 1]] & 0x00FFFFFF) : 0, is16);
+    }
+    fb_swap(fb);
+}
+
 void fb_swap_rect(Framebuffer *fb, int x, int y, int w, int h) {
     fb_present_rect(fb, x, y, w, h);
     fb_overtemp_poll(fb);

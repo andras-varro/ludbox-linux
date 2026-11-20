@@ -228,6 +228,24 @@ void fb_swap_rect(Framebuffer *fb, int x, int y, int w, int h);
 // comes and goes.  No-op without double buffering.
 void fb_overtemp_poll(Framebuffer *fb);
 
+// Show an sw x sh 8-bit palettised image (pal[i] = 0xRRGGBB) scaled 2x, nearest,
+// over the whole logical surface; callers pass sw = width/2, sh = height/2.  For a
+// surface that is not exactly 2*sw x 2*sh the image is clipped and the remainder
+// is BLACK, including the last odd row/column of an odd-sized surface (no pixel
+// is replicated).  The back buffer is not used on the fast path.
+//
+// Fast path (32bpp, landscape, double buffering): each output row is built in a
+// cached row buffer and memcpy'd twice into the FRONT buffer at (view_x, view_y),
+// bezel bands untouched; then fb_overtemp_poll() and hw_blank_poll(), as fb_swap()
+// does.  Measured on the device: 3.4 ms/frame, against 20 ms writing pixel by
+// pixel into the uncached front buffer and 14 ms upscaling into the back buffer
+// plus fb_swap().  Because the front buffer is written directly there is no
+// tearing protection and any pointer overlay is overwritten: the caller must
+// pointer_invalidate().  Anything else (portrait, 16bpp, no double buffering)
+// draws into the back buffer through the bpp-aware store and calls fb_swap().
+void fb_present_indexed2x(Framebuffer *fb, const uint8_t *src, int sw, int sh,
+                          const uint32_t pal[256]);
+
 // Clear screen with color
 void fb_clear(Framebuffer *fb, uint32_t color);
 

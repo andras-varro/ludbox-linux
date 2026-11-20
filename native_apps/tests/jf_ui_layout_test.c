@@ -11,6 +11,7 @@
  *   I  mini player taps send their events; a queue that starts on an open list shortens it (mini_taps, mini_flip).
  *   R  the queue view of now playing: 11 buttons in one row (wrapping when narrower than 676 px), the transport sends now playing's events, CLR, EQ, the title returns (queue_row, queue_widths).
  *   Q  the EQ door: the NOW PLAYING button and Shift open the panel, Back cancels, DONE saves (eq_door).
+ *   Y  the VISU door: it opens quietly, nothing is drawn or patched under it, touch / Back / B close it and ask for a redraw, a screen change closes it, keep-awake only while PLAYING (visu_door).
   *   M  MIX tick rows carry no bracket text or checkbox glyph; ticks draw as the ListView mark (mix_ticks).
  *   S  SETTINGS: the root row is SEARCH, NOW PLAYING, SETTINGS; settings and library rows hit-test and pad-navigate to their events (settings_ui).
  *   Z  browse lists and the queue as a ui_zone stack: the pad reaches strip and button row, touch never moves the pad focus (zone_stack_browse).
@@ -29,6 +30,7 @@
 
 static int fails;
 #define CHECK(c, ...) do { if (!(c)) { fails++; printf("FAIL: " __VA_ARGS__); printf("\n"); } } while (0)
+#define NP_PORTRAIT_ROW 6   /* the 446 px portrait width wraps the eleven now-playing buttons into rows of 6 and 5 */
 
 static bool inside(UiRect r, int l, int t, int rt, int b)
 {
@@ -114,11 +116,11 @@ static void run(int inset_t, int inset_b, int inset_l, int inset_r)
     for (int i = 0; i < JF_UI_QROW; i++) CHECK(!q_one || L.qrow[i].y == L.qrow[0].y, "F: queue row button %d left the single landscape row (inset %d)", i, inset_t);
     CHECK(q_one == (L.qrow_rows == 1), "F: queue row is in %d rows, one-row prediction %d (inset %d)", L.qrow_rows, q_one, inset_t);
     CHECK(L.list.y + L.list.h <= L.abar[0].y, "F: the list does not end above the action bar (inset %d)", inset_t);
-    /* one row when the safe width holds 10 buttons at the 72 px minimum plus gaps, else the fewest equal rows (the largest inset) */
-    bool one_row = (e.safe_r - e.safe_l) >= JF_UI_NP * 72 + (JF_UI_NP - 1) * 6;
+    /* one row when the safe width holds 4 transport buttons at 52 and 7 others at the 72 px minimum plus gaps, else the fewest equal rows (the largest inset) */
+    bool one_row = (e.safe_r - e.safe_l) >= 4 * 52 + (JF_UI_NP - 4) * 72 + (JF_UI_NP - 1) * 6;
     for (int i = 0; i < JF_UI_NP; i++) {
         CHECK(!one_row || L.np[i].y == L.np[0].y, "F: now-playing button %d left the single landscape row", i);
-        CHECK(L.np[i].w >= 72, "F: np[%d] narrower than the minimum (inset %d)", i, inset_t);
+        CHECK(L.np[i].w >= (one_row ? (i < 4 ? 52 : 72) : 66), "F: np[%d] narrower than the minimum (inset %d)", i, inset_t);
         for (int j = i + 1; j < JF_UI_NP; j++) CHECK(disjoint(L.np[i], L.np[j]), "F: np %d/%d overlap", i, j);
         CHECK((!one_row || disjoint(L.np[i], L.list)) && disjoint(L.np[i], L.seek), "F: np[%d] overlaps the list or the seek area (inset %d)", i, inset_t);
     }
@@ -142,7 +144,7 @@ static void run(int inset_t, int inset_b, int inset_l, int inset_r)
     CHECK(L.mini_title.w >= 200, "G: mini title too narrow: %d", L.mini_title.w);
     /* H  now playing: two button rows, the seek area (taller than the 14 px bar) clear of both and of each other */
     CHECK(L.seek.h >= 30 && L.seek.y <= L.progress.y && L.seek.y + L.seek.h >= L.progress.y + L.progress.h, "H: seek area does not cover the bar");
-    CHECK(L.np[0].h >= JF_UI_BTN_H && L.np[0].w >= 72, "H: now-playing buttons shrank");
+    CHECK(L.np[0].h >= JF_UI_BTN_H && L.np[0].w >= 52 && L.np[4].w >= 66, "H: now-playing buttons shrank");
     for (int i = 0; i < JF_UI_MIXBTN; i++) CHECK(disjoint(L.mixb[i], L.list), "H: MIX screen button %d overlaps the list", i);
     CHECK(disjoint(L.mixb[0], L.mixb[1]), "H: MIX START / CANCEL overlap");
 }
@@ -469,21 +471,21 @@ static void queue_row(void)
     feed_btn(&ui, BTN_ID_BACK, t + 3000, ev, MINI_MAX);
     CHECK(!ui.eq_up, "R: Back did not close the panel");
     t += 8000;
-    CHECK(first_event(&ui, ui.L.qrow[9].x + 20, ui.L.qrow[9].y + 20, t) == JF_EV_VOL_UP, "R: VOL+ sent the wrong event"); t += 1000;
-    CHECK(first_event(&ui, ui.L.qrow[10].x + 20, ui.L.qrow[10].y + 20, t) == JF_EV_VOL_DOWN, "R: VOL- sent the wrong event"); t += 1000;
+    CHECK(first_event(&ui, ui.L.qrow[9].x + 20, ui.L.qrow[9].y + 20, t) == JF_EV_VOL_DOWN, "R: VOL- sent the wrong event"); t += 1000;
+    CHECK(first_event(&ui, ui.L.qrow[10].x + 20, ui.L.qrow[10].y + 20, t) == JF_EV_VOL_UP, "R: VOL+ sent the wrong event"); t += 1000;
     CHECK(first_event(&ui, ui.L.qrow[5].x + 20, ui.L.qrow[5].y + 20, t) == JF_EV_QUEUE_CLEAR, "R: CLR did not send QUEUE_CLEAR"); t += 1000;
     CHECK(first_event(&ui, ui.L.qrow[6].x + 20, ui.L.qrow[6].y + 20, t) == JF_EV_SHUFFLE, "R: RND did not send SHUFFLE"); t += 1000;
     /* the title: a tap on it goes back; a tap elsewhere in the bar's middle row of the list does not */
     TopBarLayout *TL = &ui.bar.L;
     CHECK(first_event(&ui, TL->title_x + TL->title_w / 2, TL->top + TL->h / 2, t) == JF_EV_BACK, "R: a tap on the QUEUE title did not send BACK");
     t += 1000;
-    /* the pad: Tab from the list reaches the button row (zone 3) at its first button; Right walks the eleven and wraps; ACTION on the last is VOL- */
+    /* the pad: Tab from the list reaches the button row (zone 3) at its first button; Right walks the eleven and wraps; ACTION on the last is VOL+ */
     feed_btn(&ui, BTN_ID_NEXT, t += 1000, ev, MINI_MAX);
     CHECK(ui.zf.zone == 3, "R: Tab from the queue list did not reach the button row (zone %d)", ui.zf.zone);
     for (int i = 0; i < JF_UI_QROW - 1; i++) feed_btn(&ui, BTN_ID_RIGHT, t += 1000, ev, MINI_MAX);
     CHECK(ui.zf.id == JF_UI_QROW - 1, "R: the pad reached button %d after %d Rights, want %d", ui.zf.id, JF_UI_QROW - 1, JF_UI_QROW - 1);
     int k = feed_btn(&ui, BTN_ID_ACTION, t += 1000, ev, MINI_MAX);
-    CHECK(has_event(ev, k, JF_EV_VOL_DOWN), "R: ACTION on the last button did not send VOL-");
+    CHECK(has_event(ev, k, JF_EV_VOL_UP), "R: ACTION on the last button did not send VOL+");
     feed_btn(&ui, BTN_ID_RIGHT, t += 1000, ev, MINI_MAX);
     CHECK(ui.zf.id == 0, "R: the pad did not wrap to the first button (%d)", ui.zf.id);
     jf_ui_free(&ui);
@@ -505,7 +507,7 @@ static void qrow_shape(void)
     feed(&ui, 0, 0, false, false, false, 1000, ev, MINI_MAX);
     CHECK(JF_UI_QROW == 11, "Q: the queue row has %d buttons, want 11 (UP and DN are gone)", JF_UI_QROW);
     CHECK(JF_UI_QROW_EQ == 8, "Q: EQ is at index %d, want 8", JF_UI_QROW_EQ);
-    static const char *want[11] = { "", "", "", "", "SAVE", "CLR", "RND", "REMOVE", "EQ", "VOL+", "VOL-" };
+    static const char *want[11] = { "", "", "", "", "SAVE", "CLR", "RND", "REMOVE", "EQ", "VOL-", "VOL+" };
     int m = JF_UI_QROW < 11 ? JF_UI_QROW : 11;
     for (int i = 0; i < m; i++)
         CHECK(strcmp(ui.qrow[i].text, want[i]) == 0, "Q: queue button %d reads '%s', want '%s'", i, ui.qrow[i].text, want[i]);
@@ -580,6 +582,48 @@ static void queue_widths(void)
     printf("queue row at 780 px: %d buttons of %d px, gap 6, %d row(s)\n", JF_UI_QROW, L.qrow[0].w, L.qrow_rows);
 }
 
+/* the now-playing row at the measured unit (780 px): one row, the four transport glyphs 52 px, the other seven wider and
+ * all the same, VISU between EQ and VOL-, every label's ink inside its button at scale 2 */
+static void np_row_unit(void)
+{
+    static Framebuffer fb;
+    static TouchInput touch;
+    JfExtents u = { 0, 0, 800, 480, 17, 17, 797, 463 };
+    JfLayout L;
+    jf_ui_layout(&L, &u);
+    for (int i = 0; i < JF_UI_NP; i++) {
+        CHECK(L.np[i].y == L.np[0].y, "V: np[%d] left the single row at 780 px", i);
+        for (int j = i + 1; j < JF_UI_NP; j++) CHECK(disjoint(L.np[i], L.np[j]), "V: np %d/%d overlap at 780 px", i, j);
+        CHECK(inside(L.np[i], u.safe_l, u.safe_t, u.safe_r, u.safe_b), "V: np[%d] outside SAFE at 780 px", i);
+        if (i < 4) CHECK(L.np[i].w == 52, "V: transport np[%d] is %d px, want 52", i, L.np[i].w);
+        else CHECK(L.np[i].w == L.np[4].w && L.np[i].w > L.np[0].w, "V: np[%d] is %d px, want equal and wider than the transport", i, L.np[i].w);
+    }
+    CHECK(L.np[4].w == 73, "V: the seven buttons are %d px at 780, want 73", L.np[4].w);
+    CHECK(L.np[JF_UI_NP - 1].x + L.np[JF_UI_NP - 1].w <= u.safe_r, "V: the row runs past the safe edge");
+    CHECK(L.np[JF_UI_NP - 1].x + L.np[JF_UI_NP - 1].w >= u.safe_r - 6, "V: the row leaves more than a gap unused");
+    /* labels, order and events */
+    static const char *want[JF_UI_NP] = { "", "", "", "", "QUEUE", "MIX", "I-MIX", "EQ", "VISU", "VOL-", "VOL+" };
+    static const JfEventType ev_want[JF_UI_NP] = { JF_EV_PREV, JF_EV_PAUSE, JF_EV_STOP, JF_EV_NEXT, JF_EV_OPEN_QUEUE, JF_EV_NONE,
+                                                   JF_EV_NONE, JF_EV_NONE, JF_EV_NONE, JF_EV_VOL_DOWN, JF_EV_VOL_UP };
+    JfApp app;
+    memset(&app, 0, sizeof app);
+    app.screen = JF_SCR_NOWPLAYING;
+    JfUi ui;
+    jf_ui_init(&ui, &fb, &touch, NULL, &app);
+    CHECK(JF_UI_NP_VISU == 8 && JF_UI_NP_EQ == 7, "V: EQ at %d, VISU at %d, want 7 and 8", JF_UI_NP_EQ, JF_UI_NP_VISU);
+    JfEvent ev[MINI_MAX];
+    uint32_t t = 1000;
+    feed(&ui, 0, 0, false, false, false, t, ev, MINI_MAX);
+    for (int i = 0; i < JF_UI_NP; i++) {
+        CHECK(strcmp(ui.np[i].text, want[i]) == 0, "V: np button %d reads '%s', want '%s'", i, ui.np[i].text, want[i]);
+        CHECK(6 * (int)strlen(want[i]) * 2 <= L.np[i].w - 12, "V: np button %d label ink does not fit at scale 2 in %d px", i, L.np[i].w);
+        if (i == 5 || i == 6 || i == JF_UI_NP_EQ || i == JF_UI_NP_VISU) continue;   /* MIX / I-MIX ask first, EQ and VISU are UI-only */
+        t += 3000;
+        CHECK(first_event(&ui, ui.L.np[i].x + 20, ui.L.np[i].y + 20, t) == ev_want[i], "V: np button %d sent the wrong event", i);
+    }
+    jf_ui_free(&ui);
+}
+
 /* the list (or root list) takes the strip's room the frame the queue starts, and gives it back when it empties */
 static void mini_flip(JfScreen s, const char *tag)
 {
@@ -651,7 +695,7 @@ static void portrait(void)
     int rows = 0, last_y = -1;
     for (int i = 0; i < JF_UI_NP; i++) {
         CHECK(inside(L.np[i], e.safe_l, e.safe_t, e.safe_r, e.safe_b), "N: np[%d] outside SAFE in portrait", i);
-        CHECK(L.np[i].w >= 72, "N: np[%d] narrower than the minimum", i);
+        CHECK(L.np[i].w >= 66, "N: np[%d] narrower than the minimum", i);
         for (int j = i + 1; j < JF_UI_NP; j++) CHECK(disjoint(L.np[i], L.np[j]), "N: portrait np %d/%d overlap", i, j);
         if (L.np[i].y != last_y) { rows++; last_y = L.np[i].y; }
     }
@@ -703,6 +747,111 @@ static void eq_door(void)
     CHECK(!ui.eq_up && n == 0, "Q: DONE did not close the panel (up %d, %d events)", ui.eq_up, n);
     CHECK(jf_ui_eq_take(&ui, g, &save) && save, "Q: DONE did not hand the gains back to be saved");
     jf_ui_free(&ui);
+}
+
+/* Y  the visualiser door on NOW PLAYING: the VISU button opens it with no events; while up nothing is dirty and no bar patch
+ *    is due; a touch press, Back or the pad's B closes it, sets dirty so Now Playing is redrawn, and the screen is still NOW
+ *    PLAYING; the screen moving away closes it; it keeps the panel awake only while music PLAYS (visu_door). */
+static void visu_open(JfUi *ui, JfApp *app, uint32_t t, JfEvent *ev)
+{
+    jf_ui_take_dirty(ui);
+    UiRect b = ui->L.np[JF_UI_NP_VISU];
+    int n = tap_at(ui, b.x + b.w / 2, b.y + b.h / 2, t, ev);
+    CHECK(jf_ui_visu_active(ui) && n == 0, "Y: a tap on VISU did not open it quietly (active %d, %d events)", jf_ui_visu_active(ui), n);
+    CHECK(app->screen == JF_SCR_NOWPLAYING, "Y: opening changed the screen");
+    ui->dirty = false;       /* what the open itself marked, and any widget flag: the close edge must be the only source of the redraw */
+    (void)button_take_dirty();
+}
+
+static void visu_door(void)
+{
+    static Framebuffer fb;
+    static TouchInput touch;
+    JfApp app;
+    JfUi ui;
+    JfEvent ev[MINI_MAX];
+    UiRect r;
+    memset(&app, 0, sizeof app);
+    app.screen = JF_SCR_NOWPLAYING;
+    jf_ui_init(&ui, &fb, &touch, NULL, &app);
+    feed(&ui, 0, 0, false, false, false, 1000, ev, MINI_MAX);
+    CHECK(!jf_ui_visu_active(&ui), "Y: active before anything was pressed");
+
+    visu_open(&ui, &app, 3000, ev);
+    ui.dirty = true;
+    CHECK(!jf_ui_take_dirty(&ui), "Y: a frame was due while the visualiser is up");
+    CHECK(ui.dirty, "Y: taking a frame while up swallowed the pending redraw (the closing edge needs it)");
+    ui.info_dirty = true;
+    CHECK(!jf_ui_take_info(&ui, &r), "Y: a bar patch was offered while the visualiser is up");
+    CHECK(ui.info_dirty, "Y: take_info consumed the pending tick while up");
+    ui.dirty = false;
+    ui.info_dirty = false;
+    int n = feed(&ui, 0, 0, false, false, false, 4000, ev, MINI_MAX);
+    CHECK(n == 0 && jf_ui_visu_active(&ui), "Y: an idle frame closed it or emitted (%d events)", n);
+    ui.info_dirty = false;
+    ui.bar.info_next_ms = 0;
+    strcpy(ui.bar.right_buf, "STALE");   /* the sample then always reports a change, so only visu_up keeps it quiet */
+    feed(&ui, 0, 0, false, false, false, 9000, ev, MINI_MAX);   /* the 1 Hz bar tick falls due while it is up */
+    CHECK(!ui.info_dirty, "Y: the bar's info tick marked a patch while the visualiser is up");
+
+    /* a touch press closes it, and the frame after is a full Now Playing redraw */
+    n = feed(&ui, 100, 100, true, true, false, 12000, ev, MINI_MAX);
+    CHECK(n == 0 && !jf_ui_visu_active(&ui), "Y: a touch press did not close it quietly (%d events, active %d)", n, jf_ui_visu_active(&ui));
+    CHECK(jf_ui_take_dirty(&ui), "Y: closing did not ask for a full redraw");
+    CHECK(app.screen == JF_SCR_NOWPLAYING, "Y: closing left the screen");
+    n = feed(&ui, 100, 100, false, false, true, 12100, ev, MINI_MAX);   /* the release must press nothing underneath */
+    n += feed(&ui, 0, 0, false, false, false, 12200, ev, MINI_MAX);
+    CHECK(n == 0, "Y: the finger that closed it reached the screen under it (%d events)", n);
+    {   /* the finger that closes it lands on the VISU button itself and stays down: it must not reopen it */
+        feed(&ui, 0, 0, false, false, false, 14000, ev, MINI_MAX);
+        visu_open(&ui, &app, 16000, ev);
+        UiRect vb = ui.L.np[JF_UI_NP_VISU];
+        int cx = vb.x + vb.w / 2, cy = vb.y + vb.h / 2;
+        feed(&ui, cx, cy, true, true, false, 19000, ev, MINI_MAX);
+        feed(&ui, cx, cy, false, true, false, 19040, ev, MINI_MAX);
+        feed(&ui, cx, cy, false, true, false, 19080, ev, MINI_MAX);
+        feed(&ui, cx, cy, false, false, true, 19120, ev, MINI_MAX);
+        CHECK(!jf_ui_visu_active(&ui), "Y: the closing finger, still down on VISU, reopened it");
+        jf_ui_take_dirty(&ui);
+    }
+
+    /* Back, and the pad's B */
+    int ids[2] = { BTN_ID_BACK, BTN_ID_CANCEL };
+    for (int k = 0; k < 2; k++) {
+        uint32_t t = 30000 + (uint32_t)k * 10000;
+        feed(&ui, 0, 0, false, false, false, t, ev, MINI_MAX);
+        visu_open(&ui, &app, t + 2000, ev);
+        n = feed_btn(&ui, ids[k], t + 6000, ev, MINI_MAX);
+        CHECK(n == 0 && !jf_ui_visu_active(&ui), "Y: button %d did not close it quietly (%d events)", ids[k], n);
+        CHECK(jf_ui_take_dirty(&ui), "Y: button %d closed it without a redraw", ids[k]);
+    }
+
+    /* the screen moving away (a media key, a core change) closes it */
+    feed(&ui, 0, 0, false, false, false, 70000, ev, MINI_MAX);
+    visu_open(&ui, &app, 72000, ev);
+    app.screen = JF_SCR_ALBUMS;
+    feed(&ui, 0, 0, false, false, false, 76000, ev, MINI_MAX);
+    CHECK(!jf_ui_visu_active(&ui), "Y: it stayed up after the screen left NOW PLAYING");
+    CHECK(jf_ui_take_dirty(&ui), "Y: leaving the screen under it did not ask for a redraw");
+
+    /* media actions are the loop's, not the UI's: an idle input with the state moving does not close it */
+    app.screen = JF_SCR_NOWPLAYING;
+    feed(&ui, 0, 0, false, false, false, 80000, ev, MINI_MAX);
+    visu_open(&ui, &app, 82000, ev);
+    app.play_state = JF_PLAY_PAUSED;
+    feed(&ui, 0, 0, false, false, false, 86000, ev, MINI_MAX);
+    app.play_state = JF_PLAY_PLAYING;
+    feed(&ui, 0, 0, false, false, false, 66100, ev, MINI_MAX);
+    CHECK(jf_ui_visu_active(&ui), "Y: a play state change closed it");
+    jf_ui_free(&ui);
+
+    /* the keep-awake predicate: open AND playing, nothing else */
+    CHECK(jf_visu_keeps_awake(true, JF_PLAY_PLAYING), "Y: open and playing does not keep the panel awake");
+    JfPlayState others[] = { JF_PLAY_IDLE, JF_PLAY_FETCHING, JF_PLAY_END, JF_PLAY_PAUSED, JF_PLAY_STOPPED };
+    for (size_t i = 0; i < sizeof others / sizeof others[0]; i++)
+        CHECK(!jf_visu_keeps_awake(true, others[i]), "Y: open in state %d keeps the panel awake", others[i]);
+    for (int s = JF_PLAY_IDLE; s <= JF_PLAY_STOPPED; s++)
+        CHECK(!jf_visu_keeps_awake(false, (JfPlayState)s), "Y: closed in state %d keeps the panel awake", s);
 }
 
 /* P  the playlist action menu: it takes the mini player's strip (its rects, its list shortening), shows OPEN / DELETE /
@@ -1404,8 +1553,8 @@ static void pad_reach(void)
     int id0 = ui.zf.id;
     CHECK(id0 == 0, "P: portrait now playing did not start on button 0 (id %d)", id0);
     /* one RIGHT per step: each lands on the next button of the same row (ui_zone wraps Left / Right inside the row, rows of
-     * JF_UI_NP / 2 in portrait), the step past the row's last button wraps to its first, and none sends a volume event */
-    const int row = JF_UI_NP / 2;
+     * NP_PORTRAIT_ROW in portrait), the step past the row's last button wraps to its first, and none sends a volume event */
+    const int row = NP_PORTRAIT_ROW;
     for (int i = 1; i <= row; i++) {
         n = feed_btn(&ui, BTN_ID_RIGHT, t += 1000, ev, MINI_MAX);
         int want = (id0 / row) * row + (id0 % row + i) % row;
@@ -1414,10 +1563,10 @@ static void pad_reach(void)
     }
     /* Down steps to the second wrapped row (portrait only), stays there, Up steps back and then stays: no bar, no wrap */
     n = feed_btn(&ui, BTN_ID_DOWN, t += 1000, ev, MINI_MAX);
-    CHECK(ui.zf.zone == 2 && ui.zf.id == JF_UI_NP / 2, "P: portrait Down from button 0 reached zone %d id %d, want the second row (%d)", ui.zf.zone, ui.zf.id, JF_UI_NP / 2);
+    CHECK(ui.zf.zone == 2 && ui.zf.id == NP_PORTRAIT_ROW, "P: portrait Down from button 0 reached zone %d id %d, want the second row (%d)", ui.zf.zone, ui.zf.id, NP_PORTRAIT_ROW);
     CHECK(!has_event(ev, n, JF_EV_VOL_UP) && !has_event(ev, n, JF_EV_VOL_DOWN), "P: portrait Down sent a volume event");
     feed_btn(&ui, BTN_ID_DOWN, t += 1000, ev, MINI_MAX);
-    CHECK(ui.zf.zone == 2 && ui.zf.id == JF_UI_NP / 2, "P: portrait Down from the last row moved to zone %d id %d", ui.zf.zone, ui.zf.id);
+    CHECK(ui.zf.zone == 2 && ui.zf.id == NP_PORTRAIT_ROW, "P: portrait Down from the last row moved to zone %d id %d", ui.zf.zone, ui.zf.id);
     feed_btn(&ui, BTN_ID_UP, t += 1000, ev, MINI_MAX);
     CHECK(ui.zf.zone == 2 && ui.zf.id == 0, "P: portrait Up from the second row reached zone %d id %d, want button 0", ui.zf.zone, ui.zf.id);
     feed_btn(&ui, BTN_ID_UP, t += 1000, ev, MINI_MAX);
@@ -1512,6 +1661,7 @@ static void info_only(void)
 
     strcpy(ui.bar.right_buf, "CPU 0%  00:00");   /* the next sample reads different text */
     ui.bar.info_next_ms = 0;
+    strcpy(ui.bar.right_buf, "STALE");   /* the sample then always reports a change, so only visu_up keeps it quiet */
     feed(&ui, 0, 0, false, false, false, 5000, ev, MINI_MAX);
     CHECK(ui.info_dirty, "R: a changed bar text did not set the info-only flag");
     CHECK(!ui.dirty && !jf_ui_take_dirty(&ui), "R: a changed bar text on an idle screen asked for a full frame");
@@ -1524,6 +1674,7 @@ static void info_only(void)
     ui.dlg_up = true;   /* something over the bar: the tick is frozen (a full frame under the backdrop starves audio) */
     strcpy(ui.bar.right_buf, "CPU 0%  00:00");
     ui.bar.info_next_ms = 0;
+    strcpy(ui.bar.right_buf, "STALE");   /* the sample then always reports a change, so only visu_up keeps it quiet */
     feed(&ui, 0, 0, false, false, false, 9000, ev, MINI_MAX);
     CHECK(!jf_ui_take_dirty(&ui) && !ui.info_dirty, "R: a text change under a dialog asked for a frame (the tick must stay frozen)");
     jf_ui_free(&ui);
@@ -1833,6 +1984,7 @@ int main(void)
     run(48, 48, 48, 48);     /* the largest inset the library allows */
     portrait();
     eq_door();
+    visu_door();
     mini_taps();
     mini_flip(JF_SCR_ALBUMS, "albums");
     mini_flip(JF_SCR_ARTISTS, "artists");
@@ -1845,6 +1997,7 @@ int main(void)
     qrow_shape();
     queue_touch();
     queue_widths();
+    np_row_unit();
     playlist_menu();
     remove_label_fits();
     folder_ui();

@@ -1066,6 +1066,24 @@ int main(void)
               "I5 with no geometry measured the ceiling is 0, not a constant — "
               "\"not measured\" and \"55 ms\" are different claims");
         audio_out_close(&out);
+
+        /* the visualiser tap, fed by the REAL service */
+        fake_reset(&f);
+        audio_out_open(&out, &FAKE_DEV, &f, RATE, 2);
+        fc.value = 1000; fc.produce = -1; fc.calls = 0; fc.poison = false;
+        audio_out_set_fill(&out, fill_const, &fc, "test");
+        audio_out_set_volume_step(&out, AUDIO_VOLUME_DEFAULT);
+        int16_t tap[512];
+        audio_out_service(&out);
+        check(audio_out_tap_read(&out, tap, 512) == 0,
+              "I6 the tap is OFF by default: a service leaves the ring empty");
+        audio_out_tap_enable(&out, true);
+        long tw = audio_out_service(&out);
+        int tn = audio_out_tap_read(&out, tap, 512);
+        check(tw > 0 && tn == (tw < 512 ? tw : 512) && tap[tn - 1] != 0,
+              "I7 with the tap ON the service pushes what it wrote, as mono samples");
+        audio_out_tap_enable(&out, false);
+        audio_out_close(&out);
     }
 
     printf("\n=== J. one stream per process ===\n");
