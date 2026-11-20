@@ -1050,7 +1050,9 @@ static void poll_media(GamepadManager *gm) {
         while ((r = read(gm->media_fds[k], &ev, sizeof(ev))) == (ssize_t)sizeof(ev)) {
             if (input_syn_drop_skip(&sd, &ev)) continue;
             if (ev.type != EV_KEY) continue;
-            if (ev.value == 1 && hw_blank_note_activity()) continue;
+            /* A media key wakes a dark panel AND acts: "Alexa, stop" must stop the
+             * music, not only light the screen (a touch or nav key is swallowed, this is not). */
+            if (ev.value == 1) hw_blank_note_activity();
             hw_blank_keepalive();
             note_media_key(gm, ev.code, ev.value);
         }
@@ -1077,7 +1079,11 @@ static bool poll_keyboard_fd(GamepadManager *gm, int *fd, bool *latched) {
     while ((r = read(*fd, &ev, sizeof(ev))) == (ssize_t)sizeof(ev)) {
         if (input_syn_drop_skip(&sd, &ev)) continue;
         if (ev.type == EV_KEY) {
-            if (ev.value == 1 && hw_blank_note_activity()) continue;
+            if (ev.value == 1 && hw_blank_note_activity()) {
+                /* the waking press is swallowed, except a media key (it still acts) */
+                if (input_media_action(ev.code) != INPUT_MEDIA_NONE) note_media_key(gm, ev.code, ev.value);
+                continue;
+            }
             hw_blank_keepalive();
             keyboard_key_event(gm, latched, ev.code, ev.value);
         }
