@@ -117,6 +117,7 @@ int jf_settings_load(JfLogin *l, const char *path)
     l->library[0] = l->library_name[0] = '\0';
     l->tap_action = JF_TAP_REPLACE;
     l->tags_on = 0;
+    l->visu_flash = 0;
     l->tags_cut[0] = '\0';
 
     config_init_path(&cfg, path);
@@ -130,6 +131,7 @@ int jf_settings_load(JfLogin *l, const char *path)
         int ta = config_get_int(&cfg, "tap_action", JF_TAP_REPLACE);
         l->tap_action = ta >= 0 && ta < JF_TAP_COUNT ? ta : JF_TAP_REPLACE;
         l->tags_on = config_get_int(&cfg, "tags_read", 0) == 1;
+        l->visu_flash = config_get_int(&cfg, "visu_flash", 0) == 1;
         copy(l->tags_cut, sizeof l->tags_cut, config_get(&cfg, "tags_cut", ""));
         l->list_len = jf_list_len_clamp(config_get_int(&cfg, "list_len", JF_LIST_LEN_DEFAULT));
     }
@@ -147,6 +149,7 @@ int jf_settings_save(const JfLogin *l, const char *path)
     }
     config_set_int(&cfg, "tap_action", l->tap_action >= 0 && l->tap_action < JF_TAP_COUNT ? l->tap_action : JF_TAP_REPLACE);
     config_set_int(&cfg, "tags_read", l->tags_on ? 1 : 0);
+    config_set_int(&cfg, "visu_flash", l->visu_flash ? 1 : 0);
     config_set_int(&cfg, "list_len", jf_list_len_clamp(l->list_len));
     if (l->tags_cut[0]) config_set(&cfg, "tags_cut", l->tags_cut);
 

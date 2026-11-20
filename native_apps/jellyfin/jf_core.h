@@ -122,7 +122,7 @@ typedef enum { JF_CONFIRM_NONE = 0, JF_CONFIRM_INSTANT_MIX, JF_CONFIRM_CLEAR_QUE
 
 /* The settings view is a table of rows (the extension point: a new setting is one JfSettingId and one line in
  * jf_settings_rows()).  Page MAIN lists the rows; page LIBRARY lists ALL LIBRARIES then each lists[JF_LIST_LIBS] item. */
-typedef enum { JF_SET_LIBRARY = 0, JF_SET_SIGNOUT, JF_SET_TAP, JF_SET_TAGS, JF_SET_LISTLEN, JF_SET_COUNT } JfSettingId;   /* rows show in the order LIBRARY, TAP, LIST LENGTH, FILE TAGS, SIGN OUT; LISTLEN steps login.list_len 100 / 200 / 500 and saves; TAP steps login.tap_action and saves; TAGS toggles login.tags_on and saves */
+typedef enum { JF_SET_LIBRARY = 0, JF_SET_SIGNOUT, JF_SET_TAP, JF_SET_TAGS, JF_SET_LISTLEN, JF_SET_VISUFLASH, JF_SET_COUNT } JfSettingId;   /* rows show in the order LIBRARY, TAP, LIST LENGTH, FILE TAGS, VISU FLASH, SIGN OUT; VISUFLASH toggles login.visu_flash and saves; LISTLEN steps login.list_len 100 / 200 / 500 and saves; TAP steps login.tap_action and saves; TAGS toggles login.tags_on and saves */
 typedef enum { JF_SETPAGE_MAIN = 0, JF_SETPAGE_LIBRARY } JfSettingsPage;
 
 /* Buttons of the error overlay (JfApp.overlay_buttons). */

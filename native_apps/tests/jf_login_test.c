@@ -233,6 +233,10 @@ static void test_library(void)
     b.tags_on = 0; b.tags_cut[0] = 0;
     jf_settings_load(&b, spath);
     CHECK(b.tags_on == 1 && strcmp(b.tags_cut, "192.168.50.54:8096") == 0, "tags_read and tags_cut round trip (%d '%s')", b.tags_on, b.tags_cut);
+    CHECK(b.visu_flash == 0, "visu_flash defaults OFF (%d)", b.visu_flash);
+    a.visu_flash = 1; jf_settings_save(&a, spath); b.visu_flash = 0; jf_settings_load(&b, spath);
+    CHECK(b.visu_flash == 1, "visu_flash round trip (%d)", b.visu_flash);
+    a.visu_flash = 0;
     a.tags_cut[0] = 0;
     jf_settings_save(&a, spath);
     jf_settings_load(&b, spath);

@@ -30,6 +30,7 @@ typedef struct {
     int fields;                /* fields swapped in after init (test hook) */
     bool have_time;
     uint32_t next_ms;          /* when the next scene build may start */
+    bool flash_on;             /* the beat flash setting: a beat lifts the palette and thickens the wave (default off) */
     uint32_t rng;
     JfVisuScene scene;         /* the scene on screen (its wave and palette) */
     JfVisuScene nsc;           /* the scene whose field map is being built (== scene between builds) */
@@ -79,6 +80,10 @@ void jf_visu_scene(const JfVisu *v, int *field, int *wave, int *pal);
 void jf_visu_map_peek(const JfVisu *v, int which, const uint32_t **off, const uint32_t **wgt);
 /* force a scene now: field map rebuilt whole into the active map, palette instant */
 void jf_visu_set_scene(JfVisu *v, int field, int wave, int pal);
+/* the beat flash (palette lift + thicker wave on a beat): off by default, beats are still detected and counted */
+void jf_visu_set_flash(JfVisu *v, bool on);
+/* start the next scene now (the one-tap "next"): the build runs over the next steps, then the dwell timer restarts; no-op while one is building */
+void jf_visu_next_scene(JfVisu *v, uint32_t now_ms);
 /* build rows [y0,y1) of the given field into the spare map (times one chunk) */
 void jf_visu_test_build_rows(JfVisu *v, int field, int y0, int y1);
 

@@ -1843,6 +1843,11 @@ static void test_tags(void)
     CHECK(app.login.tags_on && !app.login.tags_cut[0] && has(JF_CMD_SAVE_LOGIN) && tags_req() && tags_reqs() == 1 && !jf_tags_blocked(&app),
           "row on: cut-off cleared, saved, the playing track is read");
     app.login.tags_on = 0;
+    app.login.visu_flash = 0;
+    send(JF_EV_SETTING_ACTIVATE, JF_SET_VISUFLASH);
+    CHECK(app.login.visu_flash == 1 && has(JF_CMD_SAVE_LOGIN), "VISU FLASH row on: saved");
+    send(JF_EV_SETTING_ACTIVATE, JF_SET_VISUFLASH);
+    CHECK(app.login.visu_flash == 0 && has(JF_CMD_SAVE_LOGIN), "VISU FLASH row off: saved");
     snprintf(app.login.tags_cut, sizeof app.login.tags_cut, "10.0.0.1:8096");
     app.login.tags_on = 1;
     CHECK(jf_tags_blocked(&app), "on with this server cut off reads as blocked");
@@ -1852,7 +1857,7 @@ static void test_settings(void)
 {
     int rows[JF_SET_COUNT];
     libs_open(2);
-    CHECK(app.lib_n == 2 && jf_settings_rows(&app, rows) == 5 && rows[0] == JF_SET_LIBRARY && rows[1] == JF_SET_TAP && rows[2] == JF_SET_LISTLEN && rows[3] == JF_SET_TAGS && rows[4] == JF_SET_SIGNOUT, "2 libraries: LIBRARY + TAP + LIST LENGTH + FILE TAGS + SIGN OUT rows");
+    CHECK(app.lib_n == 2 && jf_settings_rows(&app, rows) == 6 && rows[0] == JF_SET_LIBRARY && rows[1] == JF_SET_TAP && rows[2] == JF_SET_LISTLEN && rows[3] == JF_SET_TAGS && rows[4] == JF_SET_VISUFLASH && rows[5] == JF_SET_SIGNOUT, "2 libraries: LIBRARY + TAP + LIST LENGTH + FILE TAGS + SIGN OUT rows");
     send(JF_EV_SETTING_ACTIVATE, JF_SET_LIBRARY);
     CHECK(app.settings_page == JF_SETPAGE_LIBRARY, "LIBRARY page");
     send(JF_EV_BACK, 0);
@@ -1877,7 +1882,7 @@ static void test_settings(void)
     send(JF_EV_LIBRARY_SET, -1);
     CHECK(!app.login.library[0] && has(JF_CMD_SAVE_LOGIN), "ALL LIBRARIES clears the choice");
     libs_open(1);
-    CHECK(jf_settings_rows(&app, rows) == 4 && rows[0] == JF_SET_TAP && rows[1] == JF_SET_LISTLEN && rows[2] == JF_SET_TAGS && rows[3] == JF_SET_SIGNOUT, "1 library: LIBRARY row absent");
+    CHECK(jf_settings_rows(&app, rows) == 5 && rows[0] == JF_SET_TAP && rows[1] == JF_SET_LISTLEN && rows[2] == JF_SET_TAGS && rows[3] == JF_SET_VISUFLASH && rows[4] == JF_SET_SIGNOUT, "1 library: LIBRARY row absent");
     send(JF_EV_SETTING_ACTIVATE, JF_SET_LIBRARY);
     CHECK(app.settings_page == JF_SETPAGE_MAIN, "an absent row cannot be activated");
 }

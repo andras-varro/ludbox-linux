@@ -139,6 +139,7 @@ CTEST_ROWS=(
     "audio_tone_test|-I.|common/audio.c common/audio_gen.c common/audio_out.c common/audio_eq.c common/audio_enh.c common/audio_wav.c common/config.c"
     "bt_ctl_test|-I.|control_panel/bt_ctl.c"
     "button_latch_test|-I common|common/common.c common/framebuffer.c common/font.c common/touch_input.c common/hardware.c common/config.c common/highscore.c common/keyboard.c common/pointer.c common/audio.c common/audio_gen.c common/audio_out.c common/audio_eq.c common/audio_enh.c common/audio_wav.c common/start_menu.c common/gamepad.c common/input_slots.c common/input_scan.c"
+    "clock_monotonic_test|-I common|common/common.c common/framebuffer.c common/font.c common/touch_input.c common/hardware.c common/config.c common/highscore.c common/keyboard.c common/pointer.c common/audio.c common/audio_gen.c common/audio_out.c common/audio_eq.c common/audio_enh.c common/audio_wav.c common/start_menu.c common/gamepad.c common/input_slots.c common/input_scan.c"
     "bezel_scale_test|-I common|common/framebuffer.c common/font.c common/hardware.c common/config.c"
     "config_test|-I common|common/config.c"
     "cpu_load_test|-I.|control_panel/cpu_load.c"

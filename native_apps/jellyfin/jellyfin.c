@@ -43,6 +43,7 @@ static Audio audio;
 static bool  audio_ok;
 static JfVisu visu;        /* the visualiser engine, alive only while the mode is open */
 static bool  visu_on;      /* visu holds an initialised engine */
+static uint32_t visu_t0;   /* when it opened, for the exit hint */
 static bool  track_live;   /* a stream was started and its end is still to be reported */
 static const AudioFdIo stream_io = { http_stream_read, http_stream_close };
 static uint32_t track_t0;
@@ -351,6 +352,10 @@ int main(int argc, char *argv[])
         for (int i = 0; i < BTN_ID_COUNT; i++) if (in.buttons[i].pressed) navkey = true;
         pointer_update(&ptr, &in, ts.pressed, navkey, &ts);
 
+        {   /* the visualiser's gestures: the hold latch is taken every frame so it never goes stale */
+            bool hold = touch_take_two_finger_hold(&touch);
+            jf_ui_visu_touch(&ui, touch.mt_hiding, hold && jf_ui_visu_active(&ui));
+        }
         static JfEvent uev[4];
         int un = first ? 0 : jf_ui_input(&ui, &ts, &in, &ptr, now, uev, 4);
         first = false;
@@ -415,9 +420,11 @@ int main(int argc, char *argv[])
         bool vis = jf_ui_visu_active(&ui);
         if (vis && !visu_on) {
             visu_on = jf_visu_init(&visu, fb.width / 2, fb.height / 2);
+            if (visu_on) { visu_t0 = now; touch_set_hide_multi(&touch, true); jf_visu_set_flash(&visu, app.login.visu_flash != 0); }
             if (!visu_on) { fprintf(stderr, JF_APP_BIN ": visualiser out of memory\n"); ui.visu_up = false; ui.dirty = true; vis = false; }
         } else if (!vis && visu_on) {
             jf_visu_free(&visu);
+            touch_set_hide_multi(&touch, false);   /* the setting is restored with the mode */
             visu_on = false;
             if (audio_ok) audio_out_tap_enable(&audio.out, false);
         }
@@ -436,8 +443,18 @@ int main(int argc, char *argv[])
                 audio_out_tap_enable(&audio.out, true);   /* every iteration: a reopen resets the tap */
                 sn = audio_out_tap_read(&audio.out, smp, 512);
             }
+            jf_visu_set_flash(&visu, app.login.visu_flash != 0);
+            if (jf_ui_visu_take_next(&ui)) jf_visu_next_scene(&visu, now);
             jf_visu_step(&visu, smp, sn, now);
             fb_present_indexed2x(&fb, jf_visu_image(&visu), fb.width / 2, fb.height / 2, jf_visu_palette(&visu));
+            if (now - visu_t0 < TWO_FINGER_HINT_MS) {   /* the exit hint: drawn into the back buffer, then copied over the front one (the present above bypasses it) */
+                static const char *hint = "HOLD TWO FINGERS TO EXIT";
+                int hw = text_measure_width(hint, 2) + 32, hh = text_measure_height(2) + 24;
+                int hx = (int)fb.width / 2 - hw / 2, hy = SCREEN_SAFE_BOTTOM - hh - 16;
+                fb_fill_rect(&fb, hx, hy, hw, hh, COLOR_BLACK);
+                text_draw_centered(&fb, (int)fb.width / 2, hy + hh / 2, hint, COLOR_WHITE, 2);
+                fb_swap_rect(&fb, hx, hy, hw, hh);
+            }
             pointer_invalidate(&ptr);   /* the present overwrote the cursor; none is painted while this is up */
             usleep(FRAME_DELAY_ACTIVE_US);
             continue;

@@ -246,6 +246,7 @@ static void src_row(void *ctx, int index, LvRow *out)
         else if (ids[index] == JF_SET_TAP) jf_ui_tap_label(app, t, sizeof ui->rowtxt[0]);
         else if (ids[index] == JF_SET_TAGS) jf_ui_tags_label(app, t, sizeof ui->rowtxt[0]);
         else if (ids[index] == JF_SET_LISTLEN) jf_ui_listlen_label(app, t, sizeof ui->rowtxt[0]);
+        else if (ids[index] == JF_SET_VISUFLASH) jf_ui_visuflash_label(app, t, sizeof ui->rowtxt[0]);
         else {
             int r = chosen_lib_row(app);
             if (r == 0) snprintf(t, sizeof ui->rowtxt[0], "ALL LIBRARIES");
@@ -361,6 +362,8 @@ void jf_ui_set_played(JfUi *ui, int played_ms)
 void jf_ui_mark_dirty(JfUi *ui) { ui->dirty = true; }
 
 bool jf_ui_visu_active(const JfUi *ui) { return ui->visu_up; }
+void jf_ui_visu_touch(JfUi *ui, bool multi, bool hold) { ui->visu_multi = multi; ui->visu_hold = hold; }
+bool jf_ui_visu_take_next(JfUi *ui) { bool r = ui->visu_next; ui->visu_next = false; return r; }
 
 bool jf_ui_take_dirty(JfUi *ui)
 {
@@ -568,6 +571,11 @@ void jf_ui_tap_label(const JfApp *app, char *buf, size_t cap)
 void jf_ui_listlen_label(const JfApp *app, char *buf, size_t cap)
 {
     snprintf(buf, cap, "LIST LENGTH: %d", jf_list_len(app));
+}
+
+void jf_ui_visuflash_label(const JfApp *app, char *buf, size_t cap)
+{
+    snprintf(buf, cap, "VISU FLASH: %s", app->login.visu_flash ? "ON" : "OFF");
 }
 
 void jf_ui_tags_label(const JfApp *app, char *buf, size_t cap)
@@ -820,7 +828,7 @@ bool jf_ui_eq_take(JfUi *ui, int gains[EQ_BANDS], bool *save)
 static void np_press(JfUi *ui, int i, uint32_t now, JfEvent *out, int *n, int max)
 {
     if (i == JF_UI_NP_EQ) eq_open(ui, now);
-    else if (i == JF_UI_NP_VISU) { ui->visu_up = true; touch_guard_screen_changed(&ui->guard, now); }
+    else if (i == JF_UI_NP_VISU) { ui->visu_up = true; ui->visu_armed = false; ui->visu_next = false; touch_guard_screen_changed(&ui->guard, now); }
     else np_act(i, out, n, max);
 }
 
@@ -1038,13 +1046,21 @@ int jf_ui_input(JfUi *ui, const TouchState *ts, const InputState *in, Pointer *p
         ui->dirty = true;
     }
     if (ui->visu_up) {
-        /* Full-screen visualiser, drawn by the loop (jf_ui_visu_active), not by jf_ui_draw.  Only leaving is handled here:
-         * a touch press, Back / Esc, or the pad's B.  Media keys never come through here, jellyfin.c's loop takes them. */
-        if ((ts && ts->pressed) || bp(in, BTN_ID_BACK) || bp(in, BTN_ID_CANCEL)) {
+        /* Full-screen visualiser, drawn by the loop (jf_ui_visu_active), not by jf_ui_draw.  Leaving: a two-finger hold
+         * (jf_ui_visu_touch), Back / Esc, or the pad's B.  Next scene: a single tap (on release, and only when no second finger
+         * came down: the touch layer's hide-multi mode reports a release at that moment), Action / Enter / Right.  Media keys
+         * never come through here, jellyfin.c's loop takes them. */
+        if (ui->visu_hold || bp(in, BTN_ID_BACK) || bp(in, BTN_ID_CANCEL) || bp(in, BTN_ID_PAUSE)) {
             ui->visu_up = false;
+            ui->visu_hold = false;
             ui->dirty = true;
-            touch_guard_screen_changed(&ui->guard, now);   /* the finger that closed it must not press what is underneath */
+            touch_guard_screen_changed(&ui->guard, now);   /* the fingers that closed it must not press what is underneath */
+            return n;
         }
+        if (ts && ts->pressed) ui->visu_armed = true;
+        if (ui->visu_multi) ui->visu_armed = false;
+        else if (ts && ts->released && ui->visu_armed) { ui->visu_armed = false; ui->visu_next = true; }
+        if (bp(in, BTN_ID_ACTION) || bp(in, BTN_ID_RIGHT)) ui->visu_next = true;
         return n;
     }
     if (app->overlay) {

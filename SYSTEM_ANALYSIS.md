@@ -1410,7 +1410,7 @@ Driver:  twl_rtc (TWL4030 integrated)
 
 Works on most units — `hwclock -r` matches `date`, and `device-files/time-sync` does `hwclock -w`
 after each successful `rdate`, retrying in the background (10 s, then hourly), so the system clock is right
-within about 25 s of boot whenever there is network [measured 2026-11-13]. **One board's RTC is frozen
+within about 25 s of boot whenever there is network [measured 2026-11-13]; the clock is stepped from 1969-12-31 19:00 local (no RTC battery) 20 to 100 s after boot, after `app_launcher` has started [measured 2026-11-20, `.188`], so an interval timer on wall time stalls (the launcher top bar froze for ~0.95 day) and must be CLOCK_MONOTONIC. **One board's RTC is frozen
 at `2000-01-01 00:00:00`: it does not tick, and `hwclock -w` returns 0 and is ignored** [n=1, measured
 2026-11-13]. A card swap with a working unit kept the fault on the board under both kernel builds, and
 removing a powered USB hub did not clear it; whether a long unplug (supercap drained) clears it is

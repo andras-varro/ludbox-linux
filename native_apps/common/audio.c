@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <math.h>
 #include <sys/time.h>
+#include <time.h>
 
 /* ── Hardware constants ─────────────────────────────────────────────────────
  * The library layer over the device.  Everything that is arithmetic rather
@@ -64,14 +65,14 @@
 
 /* ── Internal helpers ───────────────────────────────────────────────────── */
 
-/** Millisecond wall clock (monotonic).  The arithmetic — including why the
+/** Millisecond clock (CLOCK_MONOTONIC).  The arithmetic — including why the
  *  22-bit mask wraps every ~48.5 days rather than overflowing — is
  *  audio_ms_from_timeval()'s, so a host test can reach it without a clock. */
 static uint32_t time_now_ms(void)
 {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return audio_ms_from_timeval((long)tv.tv_sec, (long)tv.tv_usec);
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return audio_ms_from_timeval((long)ts.tv_sec, (long)(ts.tv_nsec / 1000));
 }
 
 /** Is the stream open, i.e. is there anything to SERVICE?

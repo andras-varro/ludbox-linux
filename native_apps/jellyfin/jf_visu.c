@@ -461,7 +461,7 @@ void jf_visu_step(JfVisu *v, const int16_t *mono, int n, uint32_t now_ms) {
         jf_visu_spectrum(v, mono, n, v->spec);
         bass = v->spec[1] + v->spec[2] + v->spec[3] + v->spec[4];
         if (v->bass_avg == 0 && bass > 0) v->bass_avg = bass;   /* seed from the first non-silent frame: a steady tone is not a beat */
-        if (v->beat_cd == 0 && bass > BEAT_FLOOR && bass * 2 > v->bass_avg * 3) { v->flash = 255; v->beat_cd = 8; v->beats++; flash_was = true; }
+        if (v->beat_cd == 0 && bass > BEAT_FLOOR && bass * 2 > v->bass_avg * 3) { v->beat_cd = 8; v->beats++; if (v->flash_on) { v->flash = 255; flash_was = true; } }
         draw_wave(v, dst, mono, n);
     }
     v->bass_avg += (bass - v->bass_avg) >> 4;
@@ -485,4 +485,12 @@ void jf_visu_test_build_rows(JfVisu *v, int field, int y0, int y1) {
     v->nsc.field = field;
     field_setup(v, field);
     map_rows(v, 1 - v->act, y0, y1);
+}
+void jf_visu_set_flash(JfVisu *v, bool on) {
+    v->flash_on = on;
+    if (!on && v->flash > 0) { v->flash = 0; v->pal_ok = false; }   /* the lifted palette is rebuilt at the next step */
+}
+void jf_visu_next_scene(JfVisu *v, uint32_t now_ms) {
+    v->have_time = true;
+    if (!v->building) v->next_ms = now_ms;   /* due now: the next step picks and starts the build; its end restarts the dwell */
 }

@@ -14,7 +14,7 @@
  *   H  every field: silence never raises the image maximum
  *   I  FFT peak lands on a bin-centred sine;  J  pal_mix endpoints
  *   K  200 scene changes: field, wave, palette each differ from the previous
- *   L  beat: pulsed tone >= 3, steady <= 2;  M  host ms per step/map chunk < 2 (skip: -DJF_VISU_NO_TIMING_ASSERT) */
+ *   L  beat: pulsed tone >= 3, steady <= 2;  N  beat flash off (default) never lifts the palette, on does;  M  host ms per step/map chunk < 2 (skip: -DJF_VISU_NO_TIMING_ASSERT) */
 #include "jf_visu.h"
 
 #include <stdio.h>
@@ -362,6 +362,58 @@ static void group_l(void) {   /* beat detector */
     CHECK(steady <= 2, "L steady tone gave %d beats (want <= 2)", steady);
 }
 
+/* N  beat flash is a setting: pulsed tone with it OFF (the default) never lifts the palette off the scene's own family (and
+ *    still counts beats); with it ON the palette is lifted on a beat.  Frames are 3 ms apart so the hue stays at bucket 0. */
+static int flash_run(bool set, bool on, int *beats) {
+    int16_t s[256], z[256];
+    tone(s, 256, 2, 16000);
+    memset(z, 0, sizeof z);
+    JfVisu v;
+    uint32_t exp[256];
+    int lifted = 0;
+    jf_visu_init(&v, 64, 48);
+    if (set) jf_visu_set_flash(&v, on);
+    int f0, w0, p0;
+    jf_visu_scene(&v, &f0, &w0, &p0);
+    jf_visu_pal_family(&v, p0, 0, exp);
+    uint32_t t = 0;
+    for (int f = 0; f < 120; f++, t += 3) {
+        if ((f / 15) & 1) jf_visu_step(&v, s, 256, t); else jf_visu_step(&v, z, 256, t);
+        if (memcmp(jf_visu_palette(&v), exp, sizeof exp) != 0) lifted++;
+    }
+    *beats = jf_visu_beats(&v);
+    jf_visu_free(&v);
+    return lifted;
+}
+
+static void group_n(void) {
+    int b0, b1;
+    int off = flash_run(false, false, &b0);
+    printf("N: default (flash off): %d lifted frames, %d beats\n", off, b0);
+    CHECK(b0 >= 3, "N the pulsed tone gave only %d beats, the test premise failed", b0);
+    CHECK(off == 0, "N a beat lifted the palette in %d frames with the flash off (the default)", off);
+    int on = flash_run(true, true, &b1);
+    CHECK(on > 0 && b1 >= 3, "N flash on: %d lifted frames, %d beats (want a lift)", on, b1);
+    int off2 = flash_run(true, false, &b1);
+    CHECK(off2 == 0, "N explicit off lifted the palette in %d frames", off2);
+}
+
+/* O  next scene on demand: well inside the dwell no field changes by itself; after jf_visu_next_scene one does within the
+ *    chunked build, and the dwell restarts (no second change soon after). */
+static void group_o(void) {
+    JfVisu v;
+    jf_visu_init(&v, 64, 48);
+    uint32_t t = 0;
+    for (int f = 0; f < 5; f++, t += 33) jf_visu_step(&v, NULL, 0, t);
+    CHECK(jf_visu_fields(&v) == 0, "O a field changed inside the dwell");
+    jf_visu_next_scene(&v, t);
+    for (int f = 0; f < 40; f++, t += 33) jf_visu_step(&v, NULL, 0, t);
+    CHECK(jf_visu_fields(&v) == 1, "O next_scene gave %d new fields (want 1)", jf_visu_fields(&v));
+    for (int f = 0; f < 60; f++, t += 33) jf_visu_step(&v, NULL, 0, t);
+    CHECK(jf_visu_fields(&v) == 1, "O the dwell timer was not restarted (%d fields)", jf_visu_fields(&v));
+    jf_visu_free(&v);
+}
+
 static double host_ms(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -395,7 +447,7 @@ static void group_m(void) {   /* host timing; asserts skipped in a sanitized bui
 
 int main(void) {
     group_a(); group_b(); group_c(); group_d(); group_e(); group_f();
-    group_g(); group_h(); group_i(); group_j(); group_k(); group_l(); group_m();
+    group_g(); group_h(); group_i(); group_j(); group_k(); group_l(); group_n(); group_o(); group_m();
     printf("jf_visu_test: %s (%d failure(s))\n", fails ? "FAIL" : "PASS", fails);
     return fails ? 1 : 0;
 }

@@ -588,6 +588,7 @@ int jf_settings_rows(const JfApp *app, int ids[JF_SET_COUNT])
     ids[n++] = JF_SET_TAP;
     ids[n++] = JF_SET_LISTLEN;
     ids[n++] = JF_SET_TAGS;
+    ids[n++] = JF_SET_VISUFLASH;
     ids[n++] = JF_SET_SIGNOUT;
     return n;
 }
@@ -640,6 +641,9 @@ static void on_setting_activate(JfApp *app, int id, JfCmds *out)
             int cur = jf_list_len(app);
             app->login.list_len = cur >= 500 ? 100 : cur >= 200 ? 500 : 200;
             jf_list_len_apply(app);
+            emit(out, JF_CMD_SAVE_LOGIN);
+        } else if (id == JF_SET_VISUFLASH) {   /* the visualiser's beat flash, on <-> off; saved (the loop reads login.visu_flash each frame) */
+            app->login.visu_flash = !app->login.visu_flash;
             emit(out, JF_CMD_SAVE_LOGIN);
         } else if (id == JF_SET_TAGS) {   /* on: forget a cut-off and read the playing track's tags; off: drop the read and what it found */
             app->login.tags_on = !app->login.tags_on;

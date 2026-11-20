@@ -11,7 +11,7 @@
  *   I  mini player taps send their events; a queue that starts on an open list shortens it (mini_taps, mini_flip).
  *   R  the queue view of now playing: 11 buttons in one row (wrapping when narrower than 676 px), the transport sends now playing's events, CLR, EQ, the title returns (queue_row, queue_widths).
  *   Q  the EQ door: the NOW PLAYING button and Shift open the panel, Back cancels, DONE saves (eq_door).
- *   Y  the VISU door: it opens quietly, nothing is drawn or patched under it, touch / Back / B close it and ask for a redraw, a screen change closes it, keep-awake only while PLAYING (visu_door).
+ *   Y  the VISU door: it opens quietly, nothing is drawn or patched under it, Back / B / a two-finger 1 s hold close it and ask for a redraw, a tap steps the scene (visu_gestures), a screen change closes it, keep-awake only while PLAYING (visu_door).
   *   M  MIX tick rows carry no bracket text or checkbox glyph; ticks draw as the ListView mark (mix_ticks).
  *   S  SETTINGS: the root row is SEARCH, NOW PLAYING, SETTINGS; settings and library rows hit-test and pad-navigate to their events (settings_ui).
  *   Z  browse lists and the queue as a ui_zone stack: the pad reaches strip and button row, touch never moves the pad focus (zone_stack_browse).
@@ -355,10 +355,10 @@ static void settings_ui(void)
     snprintf(app.lists[JF_LIST_LIBS].items[1].name, sizeof app.lists[0].items[1].name, "JAZZ");
     int ids[JF_SET_COUNT];
     int cnt = jf_settings_rows(&app, ids);
-    CHECK(cnt == 5 && ids[0] == JF_SET_LIBRARY && ids[1] == JF_SET_TAP && ids[2] == JF_SET_LISTLEN && ids[3] == JF_SET_TAGS && ids[4] == JF_SET_SIGNOUT, "S: settings rows %d", cnt);
+    CHECK(cnt == 6 && ids[0] == JF_SET_LIBRARY && ids[1] == JF_SET_TAP && ids[2] == JF_SET_LISTLEN && ids[3] == JF_SET_TAGS && ids[4] == JF_SET_VISUFLASH && ids[5] == JF_SET_SIGNOUT, "S: settings rows %d", cnt);
     jf_ui_init(&ui, &fb, &touch, NULL, &app);
     feed(&ui, 0, 0, false, false, false, 1000, ev, MINI_MAX);
-    CHECK(ui.lv.count == 5, "S: settings list has %d rows, want 5", ui.lv.count);
+    CHECK(ui.lv.count == 6, "S: settings list has %d rows, want 6", ui.lv.count);
     for (int r = 0; r < cnt; r++) {
         int y = ui.lv.rect.y + LV_BORDER + 40 * r + 20;
         n = tap_at(&ui, ui.lv.rect.x + ui.lv.rect.w / 2, y, 2000u + 1000u * (uint32_t)r, ev);
@@ -406,7 +406,7 @@ static void settings_ui(void)
     cnt = jf_settings_rows(&app, ids);
     jf_ui_init(&ui, &fb, &touch, NULL, &app);
     feed(&ui, 0, 0, false, false, false, 40000, ev, MINI_MAX);
-    CHECK(cnt == 4 && ids[0] == JF_SET_TAP && ids[1] == JF_SET_LISTLEN && ids[2] == JF_SET_TAGS && ids[3] == JF_SET_SIGNOUT && ui.lv.count == 4, "S: with one library the list has %d rows (want TAP, LIST LENGTH, FILE TAGS and SIGN OUT)", ui.lv.count);
+    CHECK(cnt == 5 && ids[0] == JF_SET_TAP && ids[1] == JF_SET_LISTLEN && ids[2] == JF_SET_TAGS && ids[3] == JF_SET_VISUFLASH && ids[4] == JF_SET_SIGNOUT && ui.lv.count == 5, "S: with one library the list has %d rows (want TAP, LIST LENGTH, FILE TAGS, VISU FLASH and SIGN OUT)", ui.lv.count);
     jf_ui_free(&ui);
 }
 
@@ -796,6 +796,10 @@ static void visu_door(void)
 
     /* a touch press closes it, and the frame after is a full Now Playing redraw */
     n = feed(&ui, 100, 100, true, true, false, 12000, ev, MINI_MAX);
+    CHECK(jf_ui_visu_active(&ui), "Y: a touch press alone closed it (it is a tap now)");
+    jf_ui_visu_touch(&ui, true, true);   /* two fingers held 1 s */
+    n += feed(&ui, 0, 0, false, false, false, 13000, ev, MINI_MAX);
+    jf_ui_visu_touch(&ui, false, false);
     CHECK(n == 0 && !jf_ui_visu_active(&ui), "Y: a touch press did not close it quietly (%d events, active %d)", n, jf_ui_visu_active(&ui));
     CHECK(jf_ui_take_dirty(&ui), "Y: closing did not ask for a full redraw");
     CHECK(app.screen == JF_SCR_NOWPLAYING, "Y: closing left the screen");
@@ -808,7 +812,9 @@ static void visu_door(void)
         UiRect vb = ui.L.np[JF_UI_NP_VISU];
         int cx = vb.x + vb.w / 2, cy = vb.y + vb.h / 2;
         feed(&ui, cx, cy, true, true, false, 19000, ev, MINI_MAX);
+        jf_ui_visu_touch(&ui, true, true);
         feed(&ui, cx, cy, false, true, false, 19040, ev, MINI_MAX);
+        jf_ui_visu_touch(&ui, false, false);
         feed(&ui, cx, cy, false, true, false, 19080, ev, MINI_MAX);
         feed(&ui, cx, cy, false, false, true, 19120, ev, MINI_MAX);
         CHECK(!jf_ui_visu_active(&ui), "Y: the closing finger, still down on VISU, reopened it");
@@ -852,6 +858,54 @@ static void visu_door(void)
         CHECK(!jf_visu_keeps_awake(true, others[i]), "Y: open in state %d keeps the panel awake", others[i]);
     for (int s = JF_PLAY_IDLE; s <= JF_PLAY_STOPPED; s++)
         CHECK(!jf_visu_keeps_awake(false, (JfPlayState)s), "Y: closed in state %d keeps the panel awake", s);
+}
+
+/* Z  VISU gestures: a tap (press then release) asks for the next scene once; the finger that opened it does not; the release a second
+ *    finger causes (multi) is no tap; a held two-finger gesture, Back, Esc and B exit; Action / Right ask for next, Enter exits nothing. */
+static void visu_gestures(void)
+{
+    static Framebuffer fb;
+    static TouchInput touch;
+    JfApp app;
+    JfUi ui;
+    JfEvent ev[MINI_MAX];
+    memset(&app, 0, sizeof app);
+    app.screen = JF_SCR_NOWPLAYING;
+    jf_ui_init(&ui, &fb, &touch, NULL, &app);
+    feed(&ui, 0, 0, false, false, false, 1000, ev, MINI_MAX);
+    visu_open(&ui, &app, 3000, ev);          /* the opening tap's own release must not count */
+    CHECK(!jf_ui_visu_take_next(&ui), "Z: the finger that opened it counted as a tap");
+    feed(&ui, 100, 100, true, true, false, 4000, ev, MINI_MAX);
+    CHECK(!jf_ui_visu_take_next(&ui) && jf_ui_visu_active(&ui), "Z: a press already asked for next or closed it");
+    feed(&ui, 100, 100, false, false, true, 4100, ev, MINI_MAX);
+    CHECK(jf_ui_visu_take_next(&ui) && jf_ui_visu_active(&ui), "Z: a tap did not ask for the next scene");
+    CHECK(!jf_ui_visu_take_next(&ui), "Z: next was handed out twice");
+    /* first finger down, second arrives: the release is hidden-multi, not a tap; the hold then exits */
+    feed(&ui, 100, 100, true, true, false, 5000, ev, MINI_MAX);
+    jf_ui_visu_touch(&ui, true, false);
+    feed(&ui, 100, 100, false, false, true, 5100, ev, MINI_MAX);
+    CHECK(!jf_ui_visu_take_next(&ui) && jf_ui_visu_active(&ui), "Z: the first finger of a two-finger hold counted as a tap");
+    jf_ui_visu_touch(&ui, true, true);
+    feed(&ui, 0, 0, false, false, false, 6100, ev, MINI_MAX);
+    CHECK(!jf_ui_visu_active(&ui) && jf_ui_take_dirty(&ui), "Z: a two-finger hold did not exit with a redraw");
+    jf_ui_visu_touch(&ui, false, false);
+    /* keys */
+    int next_ids[2] = { BTN_ID_ACTION, BTN_ID_RIGHT }, exit_ids[3] = { BTN_ID_BACK, BTN_ID_CANCEL, BTN_ID_PAUSE };
+    for (int k = 0; k < 2; k++) {
+        uint32_t t = 20000 + (uint32_t)k * 10000;
+        feed(&ui, 0, 0, false, false, false, t, ev, MINI_MAX);
+        visu_open(&ui, &app, t + 2000, ev);
+        feed_btn(&ui, next_ids[k], t + 4000, ev, MINI_MAX);
+        CHECK(jf_ui_visu_take_next(&ui) && jf_ui_visu_active(&ui), "Z: key %d did not ask for next", next_ids[k]);
+    }
+    for (int k = 0; k < 3; k++) {
+        uint32_t t = 60000 + (uint32_t)k * 10000;
+        feed(&ui, 0, 0, false, false, false, t, ev, MINI_MAX);
+        if (!jf_ui_visu_active(&ui)) visu_open(&ui, &app, t + 2000, ev);
+        feed_btn(&ui, exit_ids[k], t + 4000, ev, MINI_MAX);
+        CHECK(!jf_ui_visu_active(&ui), "Z: key %d did not exit", exit_ids[k]);
+        jf_ui_take_dirty(&ui);
+    }
 }
 
 /* P  the playlist action menu: it takes the mini player's strip (its rects, its list shortening), shows OPEN / DELETE /
@@ -1985,6 +2039,7 @@ int main(void)
     portrait();
     eq_door();
     visu_door();
+    visu_gestures();
     mini_taps();
     mini_flip(JF_SCR_ALBUMS, "albums");
     mini_flip(JF_SCR_ARTISTS, "artists");

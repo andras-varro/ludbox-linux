@@ -15,15 +15,19 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/file.h>
+#include <time.h>
 
 // ============================================================================
 // TIME UTILITIES
 // ============================================================================
 
+/* CLOCK_MONOTONIC, never the wall clock: units have no RTC battery, boot at 1969 and the
+ * network time sync steps the wall clock to 2026 ~20 s after boot, which froze every
+ * "next due" comparison (top_bar_info_due) for ~0.95 days.  Same uint32 ms, same wrap. */
 uint32_t get_time_ms(void) {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return (tv.tv_sec * 1000) + (tv.tv_usec / 1000);
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint32_t)((uint32_t)ts.tv_sec * 1000u + (uint32_t)(ts.tv_nsec / 1000000));
 }
 
 // ============================================================================

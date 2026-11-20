@@ -1541,9 +1541,9 @@ static const char *device_label(const char *path)
  *  same arithmetic, audio_ms_from_timeval(). */
 static uint32_t probe_now_ms(void)
 {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return audio_ms_from_timeval((long)tv.tv_sec, (long)tv.tv_usec);
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return audio_ms_from_timeval((long)ts.tv_sec, (long)(ts.tv_nsec / 1000));
 }
 
 /** The resolver's static string for `path`, so open_path compares by value. */

@@ -87,6 +87,8 @@ void jf_ui_tap_label(const JfApp *app, char *buf, size_t cap);
 void jf_ui_listlen_label(const JfApp *app, char *buf, size_t cap);
 /** The file-tags settings row: "FILE TAGS: OFF" / "FILE TAGS: ON" / "FILE TAGS: SERVER REFUSED" (on, but this server answered a range read with the whole file). */
 void jf_ui_tags_label(const JfApp *app, char *buf, size_t cap);
+/** The visualiser beat-flash row: "VISU FLASH: OFF" (the default) / "VISU FLASH: ON". */
+void jf_ui_visuflash_label(const JfApp *app, char *buf, size_t cap);
 
 /** The file-tag lines of NOW PLAYING for a band w x h px (the small font): CONDUCTOR, WORK, WITH, ALBUM ARTIST, year and
  *  genres, each part wrapped to its line budget and clipped to the lines that fit the band.  Writes into ln, which holds
@@ -151,6 +153,9 @@ typedef struct {
     EqPanel eq;                          /* the equaliser panel (common/eq_panel.h), full screen while eq_up */
     bool eq_up;
     bool visu_up;                        /* the full-screen visualiser is open: the loop paints it (jf_ui_visu_active), not jf_ui_draw */
+    bool visu_armed;                     /* VISU: a press began inside it, so its release is a tap (the finger that opened it must not count) */
+    bool visu_multi, visu_hold;          /* VISU: the loop's touch_set_hide_multi state this frame (a second finger is down / was down), and a taken two-finger hold */
+    bool visu_next;                      /* VISU: a tap or key asked for the next scene; jf_ui_visu_take_next hands it to the loop */
     bool eq_apply, eq_save;              /* a gain set for jf_ui_eq_take(): apply it live; also save it */
     int  eq_out[EQ_BANDS];
     AudioEnh enh_out;                    /* the enhancer settings that go with eq_out (read with jf_ui_enh_out) */
@@ -191,5 +196,11 @@ bool jf_ui_visu_active(const JfUi *ui);
 
 /** Whether the panel should be kept awake: the visualiser is open and the music is PLAYING (nobody touches the panel). */
 static inline bool jf_visu_keeps_awake(bool visu_up, JfPlayState st) { return visu_up && st == JF_PLAY_PLAYING; }
+
+/** Set each frame before jf_ui_input, while the visualiser is up: multi = the touch layer is hiding a multi-finger gesture (TouchInput.mt_hiding; the
+ *  release it reports then is a second finger arriving, not a tap), hold = touch_take_two_finger_hold() this frame (closes the visualiser). */
+void jf_ui_visu_touch(JfUi *ui, bool multi, bool hold);
+/** True once per request for the next visualiser scene (a single tap on release, Action / Enter / Right). */
+bool jf_ui_visu_take_next(JfUi *ui);
 
 #endif /* ARCA_JF_UI_H */
