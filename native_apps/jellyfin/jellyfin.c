@@ -24,6 +24,7 @@
 #include "jf_art.h"
 #include "jf_ui.h"
 #include "jf_queue_store.h"
+#include "avrcp_player.h"
 
 #define EVQ_MAX 8
 
@@ -278,6 +279,7 @@ int main(int argc, char *argv[])
 
     GamepadManager gp;
     gamepad_init(&gp);
+    AvrcpPlayer *avrcp = avrcp_player_open();   /* the speaker's AVRCP buttons: BlueZ needs a registered player to know the state (NULL: no bus, carry on) */
     Pointer ptr;
     pointer_init(&ptr);
 
@@ -359,6 +361,10 @@ int main(int argc, char *argv[])
                 JfEvent me;
                 if (jf_media_event(&app, mk, jf_position_ms(&app, track_live ? (int)(now - track_t0) : 0), &me)) push(&me);
             }
+            while ((mk = avrcp_player_poll(avrcp, now)) != INPUT_MEDIA_NONE) {   /* the same actions, from the speaker's registered-player method calls */
+                JfEvent me;
+                if (jf_media_event(&app, mk, jf_position_ms(&app, track_live ? (int)(now - track_t0) : 0), &me)) push(&me);
+            }
         }
         {   /* the equaliser panel: every edit is heard at once, DONE also saves */
             int eg[EQ_BANDS];
@@ -396,6 +402,9 @@ int main(int argc, char *argv[])
             jf_wipe(&e->password, sizeof e->password);
         }
         evq_n = 0;
+        /* the state BlueZ tells the speaker, derived from the core each frame (the call dedupes) */
+        avrcp_player_set_status(avrcp, (app.play_state == JF_PLAY_PLAYING || app.play_state == JF_PLAY_FETCHING) ? AVRCP_PLAYING
+                                       : app.play_state == JF_PLAY_PAUSED ? AVRCP_PAUSED : AVRCP_STOPPED);
 
         bool redraw = jf_ui_take_dirty(&ui);
         if (redraw) {
@@ -431,6 +440,7 @@ int main(int argc, char *argv[])
     hw_leds_off();
     fb_clear(&fb, COLOR_BLACK);
     fb_swap(&fb);
+    avrcp_player_close(avrcp);
     gamepad_close(&gp);
     touch_close(&touch);
     fb_close(&fb);

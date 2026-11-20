@@ -185,6 +185,18 @@ SSL_CFLAGS=("-I$SSL_PREFIX/usr/include")
 # The staged libs need glibc 2.34+ symbols (the root filesystem carries 2.41); this host's
 # cross glibc is 2.31, so ld cannot resolve them.  They resolve on the device at run time.
 SSL_LIBS=("-L$SSL_PREFIX/usr/lib" "-Wl,--unresolved-symbols=ignore-in-shared-libs" -lssl -lcrypto)
+# libdbus, for common/avrcp_player.c (the Bluetooth player registration) and so for the ludfin
+# binary only: -I and -l ride on that one compile and the ludfin link.  Dynamic, against a copy
+# of the root filesystem's libdbus-1.so.3 (build-dbus-deps.sh); the device's copy is the runtime.
+# The artifacts are tested, not a flag.
+DBUS_PREFIX="$SCRIPT_DIR/arm-deps-softfp"
+if [ ! -f "$DBUS_PREFIX/usr/lib/libdbus-1.so" ] || [ ! -f "$DBUS_PREFIX/usr/include/dbus-1.0/dbus/dbus.h" ]; then
+    info "libdbus link files not staged yet — running build-dbus-deps.sh"
+    bash "$SCRIPT_DIR/build-dbus-deps.sh"
+fi
+[ -f "$DBUS_PREFIX/usr/lib/libdbus-1.so" ] || err "libdbus-1.so is missing after build-dbus-deps.sh"
+DBUS_CFLAGS=("-I$DBUS_PREFIX/usr/include/dbus-1.0" "-I$DBUS_PREFIX/usr/lib/dbus-1.0/include")
+DBUS_LIBS=("-L$DBUS_PREFIX/usr/lib" "-Wl,--unresolved-symbols=ignore-in-shared-libs" -ldbus-1)
 CC="$TC-gcc $ARMFLAGS"
 
 # Warning flags applied to every compile line.  These are advisory only — the build
@@ -223,6 +235,8 @@ step "11/40" "audio_out";    $CC "${WARN[@]}" -O2 "${AUDIO_CFLAGS[@]}" -c common
 step "12/40" "audio_wav";    $CC "${WARN[@]}" -O2 -c common/audio_wav.c       -o build/audio_wav.o
 step "13/40" "http";         $CC "${WARN[@]}" -O2 "${SSL_CFLAGS[@]}" -c common/http.c -o build/http.o
 step "14/40" "json";         $CC "${WARN[@]}" -O2 -c common/json.c            -o build/json.o
+                              $CC "${WARN[@]}" -O2 -c common/avrcp_logic.c     -o build/avrcp_logic.o
+                              $CC "${WARN[@]}" -O2 "${DBUS_CFLAGS[@]}" -c common/avrcp_player.c -o build/avrcp_player.o
 step "15/40" "audio_bed";    $CC "${WARN[@]}" -O2 -c common/audio_bed.c       -o build/audio_bed.o
 step "16/40" "ppm";          $CC "${WARN[@]}" -O2 -c common/ppm.c             -o build/ppm.o
                               $CC "${WARN[@]}" -O2 -c common/product.c         -o build/product.o
@@ -361,7 +375,7 @@ $CC "${WARN[@]}" -O2 -I. file_manager/file_manager.c file_manager/fm_core.c "${C
 # ludfin: music client (jellyfin/ sources + the generic Jellyfin layer in jf_shared/).  jf_core/jf_api/jf_model/jf_url/jf_login are screen-free (host tests);
 # jf_ui.c draws, jellyfin.c is the loop.  http.o and json.o come from the common block above.
 step "35/40" "ludfin"
-$CC "${WARN[@]}" -O2 -I. -Icommon -Ijellyfin -Ijf_shared jellyfin/jellyfin.c common/eq_panel.c jellyfin/jf_ui.c jellyfin/jf_core.c jf_shared/jf_api.c jf_shared/jf_tags.c jf_shared/jf_model.c jf_shared/jf_url.c jellyfin/jf_url_music.c jf_shared/jf_login.c jellyfin/jf_queue_store.c jf_shared/jf_art.c jellyfin/jf_fmt_icon.c common/icons.c common/jf_img.c build/http.o build/json.o build/list_view.o build/ui_zone.o build/top_bar.o build/top_pick.o build/icon_grid.o build/ppm.o build/ui_flow.o build/ui_focus.o control_panel/cpu_load.c common/status_line.c common/logger.c build/product.o "${COMMON_OBJ[@]}" "${GAMEPAD_OBJ[@]}" -o build/ludfin -lm "${SSL_LIBS[@]}" "${AUDIO_LIBS[@]}"
+$CC "${WARN[@]}" -O2 -I. -Icommon -Ijellyfin -Ijf_shared jellyfin/jellyfin.c common/eq_panel.c jellyfin/jf_ui.c jellyfin/jf_core.c jf_shared/jf_api.c jf_shared/jf_tags.c jf_shared/jf_model.c jf_shared/jf_url.c jellyfin/jf_url_music.c jf_shared/jf_login.c jellyfin/jf_queue_store.c jf_shared/jf_art.c jellyfin/jf_fmt_icon.c common/icons.c common/jf_img.c build/http.o build/json.o build/list_view.o build/ui_zone.o build/top_bar.o build/top_pick.o build/icon_grid.o build/ppm.o build/ui_flow.o build/ui_focus.o control_panel/cpu_load.c common/status_line.c common/logger.c build/product.o build/avrcp_logic.o build/avrcp_player.o "${COMMON_OBJ[@]}" "${GAMEPAD_OBJ[@]}" -o build/ludfin -lm "${SSL_LIBS[@]}" "${DBUS_LIBS[@]}" "${AUDIO_LIBS[@]}"
 
 # ludkino: video client (jfvideo/ sources + the generic Jellyfin layer in jf_shared/).  jv_core/jv_model/jv_url/jv_settings/jv_tracks are screen-free;
 # jv_ui.c + jv_ui_layout.c draw, jfvideo.c is the loop.  The decoder (vid_*.c) joins the link when the player lands.

@@ -164,6 +164,7 @@ CTEST_ROWS=(
     "jv_media_test|-I common -I jf_shared -I jfvideo -fsanitize=undefined,address|jfvideo/jv_core.c jfvideo/jv_model.c jfvideo/jv_tracks.c jfvideo/jv_url.c jfvideo/jv_settings.c jfvideo/jv_last.c jf_shared/jf_model.c jf_shared/jf_url.c jf_shared/jf_login.c common/config.c common/json.c|-lm"
     "gamepad_media_test|-I common|common/gamepad.c common/input_slots.c common/input_scan.c common/framebuffer.c common/font.c common/hardware.c common/config.c common/touch_input.c"
     "gamepad_wake_test|-I common -Wl,--allow-multiple-definition|common/gamepad.c common/input_slots.c common/input_scan.c common/framebuffer.c common/font.c common/hardware.c common/config.c common/touch_input.c"
+    "avrcp_player_test|-I common|common/avrcp_logic.c"
     "gradient_test|-I common|common/framebuffer.c common/font.c common/hardware.c common/config.c common/touch_input.c"
     "fb_alpha_rect_test|-I common|common/framebuffer.c common/font.c common/hardware.c common/config.c common/touch_input.c"
     "eq_panel_test|-I common|common/eq_panel.c common/common.c common/framebuffer.c common/font.c common/touch_input.c common/hardware.c common/config.c common/highscore.c common/keyboard.c common/pointer.c common/audio.c common/audio_gen.c common/audio_out.c common/audio_eq.c common/audio_enh.c common/audio_wav.c common/start_menu.c common/gamepad.c common/input_slots.c common/input_scan.c"
