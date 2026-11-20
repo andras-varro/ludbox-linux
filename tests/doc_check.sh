@@ -927,6 +927,7 @@ group_c() {
 # 2026-10-31: README.md 163 -> 166 for the USB-overload indicator (a user-facing meaning and action; no other user doc holds it).
 # 2026-11-01: README.md 166 -> 167 and native_apps/CLAUDE.md 780 -> 782 for the two-finger pause that replaced every game's on-screen
 # menu button: the user's only touch route to the pause menu, and the authoring rule for a game (operator decision).
+# 2026-11-20: native_apps/CLAUDE.md 782 -> 783 for the avrcp_player.c / avrcp_logic.c row (the BlueZ player module; operator decision).
 #
 ceilings() {
     # `CEILINGS_FILE` exists only so --self-test can drive this group over a fixture table.
@@ -938,7 +939,7 @@ ceilings() {
 167	README.md
 208	DEVELOPING.md
 342	CLAUDE.md
-782	native_apps/CLAUDE.md
+783	native_apps/CLAUDE.md
 232	lib/CLAUDE.md
 106	device-files/CLAUDE.md
 324	tests/CLAUDE.md
