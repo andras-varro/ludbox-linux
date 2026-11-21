@@ -81,6 +81,7 @@
 #include <string.h>
 #include "touch_input.h"
 #include "framebuffer.h"
+#include "rotation.h"
 
 static int fails = 0;
 
@@ -159,11 +160,27 @@ static TouchInput bezel_fx(void) {
 static TouchInput portrait_fx(void) {
     TouchInput t = base_fx();
     t.portrait_mode = true;
+    t.rotation = ROT_270;   /* the software portrait: 90 CCW */
     t.panel_width = 480; t.panel_height = 800;
     t.screen_width = 480; t.screen_height = 800;
     return t;
 }
 
+
+/* The VRFB rotations: same raw panel, the logical surface turned 90 CW (tall) or
+ * 180 (landscape).  panel_width/height are in APP orientation, as portrait_fx(). */
+static TouchInput rot_fx(int q) {
+    TouchInput t = base_fx();
+    t.rotation = q;
+    t.portrait_mode = rotation_is_tall(q);
+    if (t.portrait_mode) {
+        t.panel_width = 480; t.panel_height = 800;
+        t.screen_width = 480; t.screen_height = 800;
+    }
+    return t;
+}
+static TouchInput rot90_fx(void)  { return rot_fx(ROT_90); }
+static TouchInput rot180_fx(void) { return rot_fx(ROT_180); }
 static TouchInput small_screen_fx(void) {
     TouchInput t = base_fx();
     t.screen_width = 640; t.screen_height = 400;
@@ -355,6 +372,20 @@ int main(void) {
     expect_map("F3 raw centre",    portrait_fx(), 2048, 2048, 240, 399);
     expect_map("F4 low X, high Y", portrait_fx(),    0, 4095,   0,   0);
     expect_map("F5 high X, low Y", portrait_fx(), 4095,    0, 479, 799);
+
+    printf("F  rotation 90 (VRFB, tall): logical X is raw Y, logical Y is inverted raw X\n");
+    expect_map("F6 raw origin",    rot90_fx(),    0,    0,   0, 799);
+    expect_map("F7 raw maximum",   rot90_fx(), 4095, 4095, 479,   0);
+    expect_map("F8 raw centre",    rot90_fx(), 2048, 2048, 239, 400);
+    expect_map("F9 low X, high Y", rot90_fx(),    0, 4095, 479, 799);
+    expect_map("F10 high X, low Y", rot90_fx(), 4095,    0,   0,   0);
+
+    printf("F  rotation 180 (VRFB, landscape): both axes inverted\n");
+    expect_map("F11 raw origin",    rot180_fx(),    0,    0, 799, 479);
+    expect_map("F12 raw maximum",   rot180_fx(), 4095, 4095,   0,   0);
+    expect_map("F13 raw centre",    rot180_fx(), 2048, 2048, 400, 240);
+    expect_map("F14 low X, high Y", rot180_fx(),    0, 4095, 799,   0);
+    expect_map("F15 high X, low Y", rot180_fx(), 4095,    0,   0, 479);
 
     printf("G  stage 2: the viewport origin is SUBTRACTED\n");
     expect_map("G1 centre less the origin", bezel_fx(), 2048, 2048, 391, 219);

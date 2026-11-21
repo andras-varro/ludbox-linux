@@ -34,6 +34,7 @@
 #include "backends/platform/arca/arca.h"
 #include "backends/platform/arca/arca-events.h"
 extern "C" {
+void fb_declare_landscape_only(void);   // framebuffer.h, hand-declared: plain types only
 #include "hardware.h"
 }
 #include "common/rect.h"
@@ -93,6 +94,7 @@ void ArcaGraphicsManager::initFramebuffer() {
 	// (O8) Switch to 16bpp RGB565 to halve memory bandwidth
 	fb_set_bpp("/dev/fb0", 16);
 
+	fb_declare_landscape_only();   // the game surface is landscape: rotation 0 or 180 only
 	_fb = (Framebuffer *)malloc(sizeof(Framebuffer));
 	if (!_fb) {
 		warning("Failed to allocate framebuffer structure");

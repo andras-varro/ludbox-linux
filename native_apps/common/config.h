@@ -140,6 +140,13 @@ const char *config_audio_device_stored(void);
 const char *config_audio_bt_addr(const Config *cfg);
 const char *config_audio_bt_addr_stored(void);
 
+/* The screen rotation setting in degrees: key "rotation" (0/90/180/270, not
+ * validated here -- rotation_from_degrees() folds it).  Key absent and
+ * /opt/games/portrait.mode present reads as 270 (migration; read-only).
+ * Plain types only, for ScummVM's hand-declared prototype, as
+ * config_audio_device_stored() above. */
+int config_rotation_stored(void);
+
 /* Check if LED effects are disabled. Reads "led_enabled" key (default: true). */
 bool config_led_enabled(const Config *cfg);
 

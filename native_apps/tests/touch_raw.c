@@ -576,9 +576,9 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "touch_raw: failed to init framebuffer\n");
         return 1;
     }
-    if (fb.portrait_mode) {
-        fprintf(stderr, "touch_raw: portrait mode is not supported "
-                        "(remove /opt/games/portrait.mode)\n");
+    if (fb.rotation != 0) {
+        fprintf(stderr, "touch_raw: a rotated screen is not supported "
+                        "(set rotation 0)\n");
         fb_close(&fb);
         return 1;
     }

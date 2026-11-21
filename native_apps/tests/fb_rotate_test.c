@@ -38,6 +38,7 @@
 #include <string.h>
 #include <time.h>
 #include "framebuffer.h"
+#include "rotation.h"
 
 /* The rotation as it stood before the rewrite, copied verbatim from fb_swap(). */
 static void ref_rotate(Framebuffer *fb) {
@@ -88,6 +89,8 @@ static int fails = 0;
 static void setup(Framebuffer *fb, const Geo *g, uint32_t bpp, void *panel, void *back) {
     memset(fb, 0, sizeof *fb);
     fb->portrait_mode = true;
+    fb->sw_rotate = true;   /* the 90 CCW copy; a VRFB tall surface is a straight copy */
+    fb->rotation = ROT_270;
     fb->double_buffering = true;
     fb->phys_width = g->phys_w;
     fb->phys_height = g->phys_h;
@@ -186,7 +189,7 @@ int main(void) {
             for (uint32_t i = 0; i < g->lw * g->lh; i++) mback[i] = i + 1;
             Framebuffer fb;
             setup(&fb, &geo, 4, mp, mback);
-            fb.portrait_mode = g->portrait;
+            fb.portrait_mode = g->portrait; fb.sw_rotate = g->portrait; fb.rotation = g->portrait ? ROT_270 : ROT_0;
             fb_swap(&fb);
             for (uint32_t py = 0; py < g->ph; py++)
                 for (uint32_t px = 0; px < g->pw; px++)
@@ -208,7 +211,7 @@ int main(void) {
                 for (size_t i = 0; i < panel_bytes; i++) orig[i] = (uint8_t)(0x5A ^ (i * 11));
                 memcpy(full, orig, panel_bytes);
                 setup(&fb, &geo, bpp, full, back);
-                fb.portrait_mode = g->portrait;
+                fb.portrait_mode = g->portrait; fb.sw_rotate = g->portrait; fb.rotation = g->portrait ? ROT_270 : ROT_0;
                 fb_swap(&fb);
                 for (size_t ri = 0; ri < sizeof RR / sizeof RR[0]; ri++) {
                     int x0 = RR[ri].x, y0 = RR[ri].y;
@@ -219,7 +222,7 @@ int main(void) {
                     if (y1 > (int)g->lh) y1 = (int)g->lh;
                     memcpy(got, orig, panel_bytes);
                     setup(&fb, &geo, bpp, got, back);
-                    fb.portrait_mode = g->portrait;
+                    fb.portrait_mode = g->portrait; fb.sw_rotate = g->portrait; fb.rotation = g->portrait ? ROT_270 : ROT_0;
                     fb_swap_rect(&fb, RR[ri].x, RR[ri].y, RR[ri].w, RR[ri].h);
                     int bad = 0;
                     size_t ll = fb.line_length;

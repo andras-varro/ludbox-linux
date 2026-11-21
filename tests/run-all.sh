@@ -151,6 +151,7 @@ CTEST_ROWS=(
     "mon_ring_test|-I.|sysmon/mon_ring.c"
     "overtemp_test|-I.|sysmon/mon_ring.c"
     "blank_decide_test|-I common|"
+    "rotation_test|-I common|"
     "usbfault_test|-I.|"
     "mon_graph_test|-I.|control_panel/mon_graph.c"
     "evdev_resync_test|-I common|common/gamepad.c common/input_slots.c common/framebuffer.c common/font.c common/hardware.c common/config.c common/touch_input.c"

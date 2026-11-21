@@ -22,7 +22,7 @@
  *
  * Coordinates: logical -> panel (+ bezel origin) -> raw, the last step by
  * touch_calib_raw_for_panel(), which bisects the production axis map. Landscape
- * only (refused when /opt/games/portrait.mode exists).
+ * only (refused when the rotation setting is not 0).
  */
 #include "common/config.h"
 #include "common/framebuffer.h"
@@ -115,7 +115,7 @@ typedef struct {
 } Geo;
 
 static int geo_load(Geo *g) {
-    if (access("/opt/games/portrait.mode", F_OK) == 0) return -1;
+    if (config_rotation_stored() != 0) return -1;   /* the map below is the unrotated one */
     memset(g, 0, sizeof(*g));
     g->t.fd = -1;
     g->t.panel_width = 800;  g->t.panel_height = 480;

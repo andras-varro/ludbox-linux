@@ -194,12 +194,12 @@ void touch_wizard_run(Framebuffer *fb, TouchInput *touch, bool edges_only,
     /* fb_init() rotates the margins into virtual space in portrait, so values
      * measured here would be saved rotated and re-rotated on the next start.
      * Calibration is landscape-only by design. */
-    if (fb->portrait_mode) {
+    if (fb->rotation != 0) {
         fb_clear(fb, COLOR_BLACK);
         text_draw_centered(fb, (int)fb->width / 2, (int)fb->height / 2 - 20,
                            "CALIBRATE IN LANDSCAPE MODE", COLOR_YELLOW, 3);
         text_draw_centered(fb, (int)fb->width / 2, (int)fb->height / 2 + 20,
-                           "TURN PORTRAIT OFF AND RELAUNCH", COLOR_YELLOW, 2);
+                           "SET ROTATION TO 0 AND RELAUNCH", COLOR_YELLOW, 2);
         fb_swap(fb);
         sleep(3);
         return;

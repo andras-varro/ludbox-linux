@@ -323,6 +323,18 @@ const char *config_audio_device_stored(void) {
     return buf;
 }
 
+int config_rotation_stored(void) {
+    Config cfg;
+    config_init(&cfg);
+    config_load(&cfg);          /* silent if the file is missing */
+    /* Migration (read-only): no key yet + the old flag file = the software
+     * portrait, which is 270 in the new setting.  The display page writes the
+     * key and removes the flag. */
+    if (config_get(&cfg, "rotation", NULL) == NULL)
+        return access("/opt/games/portrait.mode", F_OK) == 0 ? 270 : 0;
+    return config_get_int(&cfg, "rotation", 0);
+}
+
 const char *config_audio_bt_addr(const Config *cfg) {
     return config_get(cfg, "audio_bt_addr", "");
 }

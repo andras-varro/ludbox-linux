@@ -21,7 +21,9 @@ typedef struct {
     bool double_buffering;   // Enable/disable double buffering
     int draw_offset_x;      // Draw offset X (for screen shake etc.)
     int draw_offset_y;      // Draw offset Y (for screen shake etc.)
-    bool portrait_mode;      // Portrait mode active (90° rotation in fb_swap)
+    bool portrait_mode;      // Logical surface is tall (rotation 90 or 270): layout branches on this
+    int  rotation;           // Effective rotation, quarter turns clockwise (rotation.h): 0..3
+    bool sw_rotate;          // The 90 CCW copy in fb_swap is in use (rotation 270 without VRFB)
     uint32_t phys_width;     // Physical framebuffer width (from hardware)
     uint32_t phys_height;    // Physical framebuffer height (from hardware)
     size_t back_buffer_size; // Back buffer size (logical dims × bpp)
@@ -200,8 +202,32 @@ void fb_set_touch_inset(int top, int bottom, int left, int right);
 // Called automatically by fb_init().
 void fb_load_bezel(void);
 
-// Check if portrait mode is enabled (flag file /opt/games/portrait.mode exists)
+// True when the rotation SETTING is tall (90 or 270); the effective one is fb->portrait_mode.
 bool fb_is_portrait_mode(void);
+
+// Screen rotation (rotation.h is the policy; config_rotation_stored() the setting).
+// fb_init() applies it: through the display's VRFB rotation (FBIOPUT var.rotate)
+// when /sys/class/graphics/fbN/rotate_type says 2, else the software portrait
+// copy for 270 only. A tall surface (90/270) is 480x800 for the app either way.
+// The effective rotation is published in screen_rotation for touch_input.c.
+extern int screen_rotation;
+
+// Call BEFORE fb_init() in an app that cannot lay out 480x800 (ScummVM, VNC, a
+// video player): it gets 0 for settings 0/90 and 180 for 180/270 instead.
+// Plain types only: ScummVM hand-declares this prototype.
+void fb_declare_landscape_only(void);
+
+// The var.rotate to PUT on `device` for a landscape-only user that sets its own
+// mode (retro): the shared policy with landscape_only, 0 when there is no VRFB.
+int fb_landscape_var_rotate(const char *device);
+
+struct fb_var_screeninfo;
+struct fb_fix_screeninfo;
+// The one FBIOPUT of a rotation: var.rotate for `quarter`, xres/yres swapped when
+// tall, then re-reads var and fix. Skips the PUT when nothing would change.
+// 0 on success.
+int fb_apply_rotation(int fd, struct fb_var_screeninfo *var,
+                      struct fb_fix_screeninfo *fix, int quarter);
 
 // Initialize framebuffer
 int fb_init(Framebuffer *fb, const char *device);

@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "framebuffer.h"
+#include "rotation.h"
 
 static int fails = 0;
 static int checks = 0;
@@ -54,6 +55,8 @@ static void setup(int lw, int lh, int vx, int vy, int bpp, bool portrait) {
     fb.view_x = vx;
     fb.view_y = vy;
     fb.portrait_mode = portrait;
+    fb.sw_rotate = portrait;   /* sw copy only; hw rotation is a straight copy */
+    fb.rotation = portrait ? ROT_270 : ROT_0;
     fb.double_buffering = true;
     front_bytes = (size_t)fb.line_length * PANEL_H;
     back_bytes = (size_t)lw * lh * bpp;
@@ -220,6 +223,27 @@ int main(void) {
             check(guard_ok(front_raw, front_bytes), "portrait: no write past the panel");
             free(got);
         }
+        free(src);
+    }
+    /* VRFB rotation: the surface is tall but the fb behind it is too, so both
+     * present paths are the straight copy, not the 90 CCW one */
+    {
+        int sw = 8, sh = 5;
+        uint8_t *src = make_src(sw, sh);
+        setup(2 * sw, 2 * sh, 3, 2, 4, false);
+        fb.portrait_mode = true; fb.rotation = ROT_90; fb.sw_rotate = false;
+        fb_present_indexed2x(&fb, src, sw, sh, pal);
+        check_panel("32bpp tall VRFB surface takes the straight fast path", src, sw, sh);
+        uint8_t *got = (uint8_t *)malloc(front_bytes);
+        memcpy(got, front_raw, front_bytes);
+        setup(2 * sw, 2 * sh, 3, 2, 4, false);
+        for (int y = 0; y < 2 * sh; y++)
+            for (int x = 0; x < 2 * sw; x++)
+                ((uint32_t *)back_raw)[(size_t)y * (2 * sw) + x] = expect_px(src, sw, sh, x, y);
+        fb.portrait_mode = true; fb.rotation = ROT_90; fb.sw_rotate = false;
+        fb_swap(&fb);
+        check(memcmp(got, front_raw, front_bytes) == 0, "tall VRFB surface: fb_swap is the straight copy");
+        free(got);
         free(src);
     }
     /* no double buffering: draws into fb->buffer directly, no crash */

@@ -351,6 +351,7 @@ int main(int argc, char *argv[])
     hw_set_backlight(100);
 
     fb_set_bpp(fb_device, 32);
+    fb_declare_landscape_only();   /* the player lays out 800x480 only */
     Framebuffer fb;
     if (fb_init(&fb, fb_device) < 0) {
         fprintf(stderr, JF_APP_BIN ": cannot open framebuffer %s\n", fb_device);

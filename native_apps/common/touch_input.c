@@ -14,6 +14,7 @@
 #define LOGGER_LIB_CLIENT
 #include "logger.h"
 #include "input_scan.h"   // InputSynDrop: header-only, links nothing
+#include "rotation.h"
 
 // Default calibration file path
 #define TOUCH_CALIB_FILE "/etc/touch_calibration.conf"
@@ -30,7 +31,7 @@ static LogLevel touch_note = LOG_LEVEL_INFO;
 // swapped, so the stored geometry has to be un-swapped to interpret raw.
 static void axis_dims(const TouchInput *touch, int *phys_w, int *phys_h) {
     int w, h;
-    if (touch->portrait_mode) {
+    if (rotation_is_tall(touch->rotation)) {
         w = touch->panel_height;
         h = touch->panel_width;
     } else {
@@ -110,11 +111,12 @@ static void scale_coordinates(TouchInput *touch, int *x, int *y) {
     int my = touch_map_axis_panel(ry, touch->raw_min_y, touch->raw_knot_lo_y,
                                   touch->raw_knot_hi_y, touch->raw_max_y, phys_h);
 
-    // Portrait mode: rotate panel coords → virtual coords (90° CCW)
-    if (touch->portrait_mode) {
-        int px = mx, py = my;
-        mx = phys_h - 1 - py;
-        my = px;
+    // Rotation: physical panel coords → logical-panel coords (rotation.h)
+    if (touch->rotation != ROT_0) {
+        int lx, ly;
+        rotation_point(touch->rotation, phys_w, phys_h, mx, my, &lx, &ly);
+        mx = lx;
+        my = ly;
     }
 
     // Panel → logical: the drawing surface starts at the viewport origin, so a
@@ -248,14 +250,15 @@ int touch_init(TouchInput *touch, const char *device) {
 
     touch->calib.enabled = false;
 
-    // Detect portrait mode
-    touch->portrait_mode = (access("/opt/games/portrait.mode", F_OK) == 0);
+    // The effective rotation fb_init() applied (touch_init() runs after it)
+    touch->rotation = screen_rotation & 3;
+    touch->portrait_mode = rotation_is_tall(touch->rotation);
 
     // Seed the bezel margins from the framebuffer so that saving a calibration
     // preserves them even when the config file has no margin line. In portrait
     // the globals are rotated and would not round-trip, so leave them at zero —
     // calibration is landscape-only.
-    if (touch->portrait_mode) {
+    if (touch->rotation != ROT_0) {
         touch->calib.bezel_top = touch->calib.bezel_bottom = 0;
         touch->calib.bezel_left = touch->calib.bezel_right = 0;
     } else {

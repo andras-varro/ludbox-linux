@@ -6,6 +6,7 @@
  * the NEXT write into that page first waits until a vsync has passed. */
 #define _GNU_SOURCE
 #include "retro.h"
+#include "framebuffer.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/fb.h>
@@ -67,6 +68,7 @@ int fb0_open(void)
     have_orig = 1;
     struct fb_var_screeninfo v = orig0;
     v.xres = v.xres_virtual = PW; v.yres = PH; v.yres_virtual = 2 * PH;
+    v.rotate = (unsigned)fb_landscape_var_rotate("/dev/fb0");   /* shared policy: 0 or 180, VRFB only */
     v.xoffset = v.yoffset = 0; v.bits_per_pixel = 16; v.activate = FB_ACTIVATE_NOW;
     memset(&v.red, 0, 3 * sizeof v.red); memset(&v.transp, 0, sizeof v.transp);
     v.red.offset = 11; v.red.length = 5; v.green.offset = 5; v.green.length = 6; v.blue.length = 5;

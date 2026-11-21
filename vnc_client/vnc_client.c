@@ -845,7 +845,8 @@ static int run_vnc_client(const char *host, int port) {
     DEBUG_PRINT("Switched to 16bpp RGB565");
 #endif
 
-    /* Initialize framebuffer */
+    /* Initialize framebuffer (the remote screen is landscape: rotation 0 or 180 only) */
+    fb_declare_landscape_only();
     if (fb_init(&g_fb, FB_DEVICE) < 0) {
         LOG_ERROR(&g_logger, "Failed to initialize framebuffer");
         return -1;

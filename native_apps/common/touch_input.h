@@ -96,7 +96,8 @@ typedef struct {
     int screen_width, screen_height; // logical (visible) size
     bool calibrated;
     TouchCalibration calib;
-    bool portrait_mode;      // Portrait mode active (coordinate rotation)
+    int  rotation;           // Effective rotation, quarter turns clockwise (screen_rotation at init)
+    bool portrait_mode;      // Logical surface is tall (rotation 1 or 3); derived from rotation
     // Multi-touch (see "Multi-touch" below). Raw per-slot readings; two slots.
     bool mt_on[2];
     int  mt_x[2], mt_y[2];

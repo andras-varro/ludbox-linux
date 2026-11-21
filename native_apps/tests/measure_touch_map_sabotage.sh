@@ -105,10 +105,12 @@ run "E  the Y knots are not zeroed with the range" E \
     sed -i 's|touch->raw_knot_lo_y = touch->raw_knot_hi_y = 0;||' touch_input.c
 run "E  the reset writes 4095 into raw_min_x too" E \
     sed -i 's|touch->raw_min_x = 0; touch->raw_max_x = 4095;|touch->raw_min_x = 4095; touch->raw_max_x = 4095;|' touch_input.c
-run "F  the portrait rotation does not invert Y" F \
-    sed -i 's|mx = phys_h - 1 - py;|mx = py;|' touch_input.c
-run "F  the rotated Y comes from raw Y, not raw X" F \
-    sed -i 's|my = px;|my = py;|' touch_input.c
+run "F  the rotated X is taken from the wrong axis" F \
+    sed -i 's|        mx = lx;|        mx = my;|' touch_input.c
+run "F  the rotated Y is taken from the wrong axis" F \
+    sed -i 's|        my = ly;|        my = mx;|' touch_input.c
+run "F  only the software portrait (270) rotates the touch" F \
+    sed -i 's|    if (touch->rotation != ROT_0) {|    if (touch->rotation == ROT_270) {|' touch_input.c
 run "G  the viewport X origin is not subtracted" G \
     sed -i 's|mx -= touch->view_x;||' touch_input.c
 run "G  the viewport Y origin is ADDED" G \

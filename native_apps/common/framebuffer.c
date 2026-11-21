@@ -15,6 +15,7 @@
 #include <time.h>
 #include "overtemp.h"
 #include "usbfault.h"
+#include "rotation.h"
 
 #define LOGGER_LIB_CLIENT
 #include "logger.h"
@@ -37,6 +38,62 @@ int screen_panel_width  = 800;
 int screen_panel_height = 480;
 int screen_view_x = 0;
 int screen_view_y = 0;
+
+// Effective rotation (quarter turns clockwise) of the last fb_init(), for touch_input.c.
+int screen_rotation = 0;
+
+// Plain-type prototype: config.h cannot be included here (framebuffer.o is also
+// built inside ScummVM, whose own config.h shadows it).
+int config_rotation_stored(void);
+
+static bool fb_landscape_only;
+void fb_declare_landscape_only(void) { fb_landscape_only = true; }
+
+// /sys/class/graphics/fbN/rotate_type == 2 is VRFB rotation (omapfb); without it a
+// DMA-rotated fb underflows DISPC. N comes from the device name's trailing digits.
+static bool fb_vrfb_available(const char *device) {
+    const char *base = strrchr(device, '/');
+    base = base ? base + 1 : device;
+    char path[96];
+    if (strncmp(base, "fb", 2) != 0 || base[2] == 0) return false;
+    snprintf(path, sizeof path, "/sys/class/graphics/%.16s/rotate_type", base);
+    FILE *f = fopen(path, "r");
+    if (!f) return false;
+    int rt = -1;
+    if (fscanf(f, "%d", &rt) != 1) rt = -1;
+    fclose(f);
+    return rt == 2;
+}
+
+int fb_landscape_var_rotate(const char *device) {
+    RotationPlan p = rotation_plan(rotation_from_degrees(config_rotation_stored()),
+                                   fb_vrfb_available(device), true);
+    return p.hw ? rotation_var_rotate(p.quarter) : 0;
+}
+
+int fb_apply_rotation(int fd, struct fb_var_screeninfo *var,
+                      struct fb_fix_screeninfo *fix, int quarter) {
+    // The panel's native size, whatever the fd currently shows (a tall mode left
+    // behind by a killed predecessor reads back as 480x800).
+    unsigned nat_w = var->xres > var->yres ? var->xres : var->yres;
+    unsigned nat_h = var->xres > var->yres ? var->yres : var->xres;
+    unsigned w = rotation_is_tall(quarter) ? nat_h : nat_w;
+    unsigned h = rotation_is_tall(quarter) ? nat_w : nat_h;
+    unsigned rot = (unsigned)rotation_var_rotate(quarter);
+    if (var->rotate != rot || var->xres != w || var->yres != h) {
+        struct fb_var_screeninfo v = *var;
+        v.rotate = rot;
+        v.xres = v.xres_virtual = w;
+        v.yres = h;
+        if (v.yres_virtual < h) v.yres_virtual = h;
+        v.xoffset = v.yoffset = 0;
+        v.activate = FB_ACTIVATE_NOW;
+        if (ioctl(fd, FBIOPUT_VSCREENINFO, &v) < 0) return -1;
+        if (ioctl(fd, FBIOGET_VSCREENINFO, var) < 0) return -1;
+        if (ioctl(fd, FBIOGET_FSCREENINFO, fix) < 0) return -1;
+    }
+    return (var->xres == w && var->yres == h) ? 0 : -1;
+}
 
 // The panel's own resolution — see the header. Defaults match the surface
 // defaults above, so the UI scale is a 1:1 no-op before fb_init() has run.
@@ -213,7 +270,7 @@ static int fb_apply_viewport(Framebuffer *fb, int surf_w, int surf_h) {
     int panel_w = surf_w, panel_h = surf_h;
     if (fb_read_panel_size(&panel_w, &panel_h) == 0) {
         // The timings are physical; the app's orientation may be rotated.
-        if (fb->portrait_mode) { int s = panel_w; panel_w = panel_h; panel_h = s; }
+        if (fb->portrait_mode) { int s = panel_w; panel_w = panel_h; panel_h = s; }  // logical tall
         fb_scale_bezel_to_surface(panel_w, panel_h, surf_w, surf_h, &t, &b, &l, &r);
     }
 
@@ -271,8 +328,9 @@ int fb_set_bezel(Framebuffer *fb, int top, int bottom, int left, int right) {
     screen_bezel_left   = left;
     screen_bezel_right  = right;
 
-    int panel_w = fb->portrait_mode ? (int)fb->phys_height : (int)fb->phys_width;
-    int panel_h = fb->portrait_mode ? (int)fb->phys_width  : (int)fb->phys_height;
+    // phys_* is already in the logical orientation under VRFB; only the software copy swaps
+    int panel_w = fb->sw_rotate ? (int)fb->phys_height : (int)fb->phys_width;
+    int panel_h = fb->sw_rotate ? (int)fb->phys_width  : (int)fb->phys_height;
 
     if (fb_apply_viewport(fb, panel_w, panel_h) < 0) {
         screen_bezel_top    = old_t;
@@ -303,7 +361,7 @@ int fb_set_bezel(Framebuffer *fb, int top, int bottom, int left, int right) {
 }
 
 bool fb_is_portrait_mode(void) {
-    return access("/opt/games/portrait.mode", F_OK) == 0;
+    return rotation_is_tall(rotation_from_degrees(config_rotation_stored()));
 }
 
 int fb_set_bpp(const char *device, int bpp) {
@@ -418,34 +476,46 @@ int fb_init(Framebuffer *fb, const char *device) {
         return -1;
     }
     
+    // Rotation: the one policy (rotation.h). A VRFB rotation is PUT here, before
+    // anything below reads the geometry; the software copy is only the 270 fallback.
+    RotationPlan plan = rotation_plan(rotation_from_degrees(config_rotation_stored()),
+                                      fb_vrfb_available(device), fb_landscape_only);
+    if (plan.hw && fb_apply_rotation(fb->fd, &vinfo, &finfo, plan.quarter) < 0) {
+        fprintf(stderr, "Framebuffer: rotation %d refused by the driver -- using 0\n",
+                plan.quarter * 90);
+        plan.quarter = ROT_0;
+        plan.hw = plan.sw = false;
+        fb_apply_rotation(fb->fd, &vinfo, &finfo, ROT_0);
+    }
+    fb->rotation = plan.quarter;
+    fb->sw_rotate = plan.sw;
+    screen_rotation = plan.quarter;
+
     fb->phys_width = vinfo.xres;
     fb->phys_height = vinfo.yres;
-    fb->portrait_mode = fb_is_portrait_mode();
+    fb->portrait_mode = rotation_is_tall(plan.quarter);
 
-    // Panel dimensions in the app's orientation
+    // Panel dimensions in the app's orientation. Under VRFB the fb is already in
+    // that orientation (xres/yres were PUT swapped); only the software copy has a
+    // physical landscape fb behind a tall surface, so only it swaps (swapping
+    // again for hw would turn 480x800 back into 800x480).
     int panel_w, panel_h;
-    if (fb->portrait_mode) {
-        // Apps see swapped dimensions (e.g., 480x800 instead of 800x480)
+    if (fb->sw_rotate) {
         panel_w = fb->phys_height;
         panel_h = fb->phys_width;
-        LIB_LOG(fb_note, "Portrait mode: physical %dx%d -> virtual %dx%d",
-               fb->phys_width, fb->phys_height, panel_w, panel_h);
-
-        // Rotate the bezel margins into the virtual coordinate system (90 CCW):
-        // physical left -> virtual top, right -> bottom, top -> right, bottom -> left
-        int pt = screen_bezel_top, pb = screen_bezel_bottom;
-        int pl = screen_bezel_left, pr = screen_bezel_right;
-        screen_bezel_top    = pl;
-        screen_bezel_bottom = pr;
-        screen_bezel_left   = pb;
-        screen_bezel_right  = pt;
-
-        LIB_LOG(fb_note, "Portrait mode: rotated bezel margins T=%d B=%d L=%d R=%d",
-               screen_bezel_top, screen_bezel_bottom,
-               screen_bezel_left, screen_bezel_right);
     } else {
         panel_w = fb->phys_width;
         panel_h = fb->phys_height;
+    }
+    if (plan.quarter != ROT_0) {
+        LIB_LOG(fb_note, "Rotation %d (%s): fb %dx%d -> logical %dx%d", plan.quarter * 90,
+               plan.hw ? "VRFB" : "software", fb->phys_width, fb->phys_height, panel_w, panel_h);
+        // Bezel margins were measured on the physical panel: rotate them into the logical one.
+        rotation_bezel(plan.quarter, &screen_bezel_top, &screen_bezel_bottom,
+                       &screen_bezel_left, &screen_bezel_right);
+        LIB_LOG(fb_note, "Rotation: bezel margins T=%d B=%d L=%d R=%d",
+               screen_bezel_top, screen_bezel_bottom,
+               screen_bezel_left, screen_bezel_right);
     }
 
     // Shrink the drawing surface to the visible rectangle. Bad margins fall
@@ -518,7 +588,7 @@ int fb_init(Framebuffer *fb, const char *device) {
 
     LIB_LOG(fb_note, "Framebuffer initialized: %dx%d logical at (%d,%d) on a %dx%d panel%s, %d bpp",
            fb->width, fb->height, fb->view_x, fb->view_y, panel_w, panel_h,
-           fb->portrait_mode ? " [portrait]" : "", vinfo.bits_per_pixel);
+           fb->portrait_mode ? " [tall]" : "", vinfo.bits_per_pixel);
     fb_announced = true;
     fb_note = LOG_LEVEL_INFO;   // a later explicit fb_load_bezel() still reports
     return 0;
@@ -540,7 +610,7 @@ static void fb_present_full(Framebuffer *fb) {
     if (!fb->double_buffering || fb->back_buffer == NULL)
         return;
 
-    if (fb->portrait_mode) {
+    if (fb->sw_rotate) {
         // 90 CCW rotation from the logical surface into the panel, offset by the
         // viewport: logical (lx, ly) -> virtual (lx+view_x, ly+view_y)
         //                            -> physical (vy, phys_height-1-vx)
@@ -630,7 +700,7 @@ static void fb_present_rect(Framebuffer *fb, int x, int y, int w, int h) {
     const uint32_t lw = fb->width;
     const size_t ll = fb->line_length;
 
-    if (fb->portrait_mode) {
+    if (fb->sw_rotate) {
         // fb_swap()'s mapping: logical column lx lands on physical row
         // phys_height-1-view_x-lx, logical row ly at physical x view_y+ly.
         // Taken column by column so each store run ascends in address.
@@ -710,7 +780,7 @@ static void fb_mark_red(Framebuffer *fb, uint32_t x0, uint32_t y0, int w, int h)
             const uint32_t lx = x0 + (uint32_t)c, ly = y0 + (uint32_t)r;
             uint8_t *row;
             uint32_t px;
-            if (fb->portrait_mode) {   // fb_swap()'s rotation, one pixel
+            if (fb->sw_rotate) {   // fb_swap()'s rotation, one pixel
                 row = (uint8_t *)fb->buffer
                     + (size_t)(fb->phys_height - 1 - fb->view_x - lx) * fb->line_length;
                 px = fb->view_y + ly;
@@ -789,7 +859,7 @@ void fb_present_indexed2x(Framebuffer *fb, const uint8_t *src, int sw, int sh,
     const int ch = (2 * sh < lh) ? 2 * sh : lh;
 
     if (fb->double_buffering && fb->back_buffer != NULL && fb->buffer != NULL &&
-        !fb->portrait_mode && fb->bytes_per_pixel == 4 && lw > 0 && lh > 0) {
+        !fb->sw_rotate && fb->bytes_per_pixel == 4 && lw > 0 && lh > 0) {
         // One cached row, built once and written to the uncached front buffer as
         // two ascending memcpy runs (a pixel-by-pixel store there costs 20 ms).
         static uint32_t *row = NULL;
