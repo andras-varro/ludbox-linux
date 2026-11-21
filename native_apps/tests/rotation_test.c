@@ -4,6 +4,7 @@
  * Negative control: define ROTATION_SABOTAGE to swap the quarter-1 and
  * quarter-3 point maps; groups C and D must then fail. */
 #include <stdio.h>
+#include <string.h>
 #include "rotation.h"
 
 static int fails, checks;
@@ -77,6 +78,18 @@ int main(void) {
     }
     { int t = 1, b = 2, l = 3, r = 4; rotation_bezel(3, &t, &b, &l, &r);
       CHECK(t == 3 && b == 4 && l == 2 && r == 1, "D q3 equals the old portrait rotation T=L B=R L=B R=T"); }
+
+    /* E: the Control Panel row: cycle and label */
+    { int d = 0; static const int want[] = { 90, 180, 270, 0, 90 };
+      for (int i = 0; i < 5; i++) { d = rotation_next_degrees(d); CHECK(d == want[i], "E cycle step %d gave %d", i, d); }
+      CHECK(rotation_next_degrees(45) == 90 && rotation_next_degrees(-90) == 0, "E cycle fold"); }
+    { char s[40];
+      rotation_label(s, sizeof s, 0, true);    CHECK(!strcmp(s, "ROTATION: 0"), "E label '%s'", s);
+      rotation_label(s, sizeof s, 90, true);   CHECK(!strcmp(s, "ROTATION: 90"), "E label '%s'", s);
+      rotation_label(s, sizeof s, 270, false); CHECK(!strcmp(s, "ROTATION: 270"), "E label '%s'", s);
+      rotation_label(s, sizeof s, 0, false);   CHECK(!strcmp(s, "ROTATION: 0"), "E label '%s'", s);
+      rotation_label(s, sizeof s, 90, false);  CHECK(!strcmp(s, "ROTATION: 90 (NEEDS VRFB)"), "E label '%s'", s);
+      rotation_label(s, sizeof s, 180, false); CHECK(!strcmp(s, "ROTATION: 180 (NEEDS VRFB)"), "E label '%s'", s); }
 
     printf("rotation_test: %d checks, %d failures\n", checks, fails);
     return fails ? 1 : 0;

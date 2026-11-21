@@ -20,6 +20,8 @@
 #define ROTATION_H
 
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdio.h>
 
 enum { ROT_0 = 0, ROT_90 = 1, ROT_180 = 2, ROT_270 = 3 };
 
@@ -96,6 +98,21 @@ static inline void rotation_point(int quarter, int pw, int ph, int px, int py,
     case ROT_270: *lx = ph - 1 - py; *ly = px;          break;
     default:      *lx = px;          *ly = py;          break;
     }
+}
+
+/* The Control Panel's ROTATION row: the setting cycles 0 -> 90 -> 180 -> 270 -> 0
+ * (anything that is not a multiple of 90 counts as 0). */
+static inline int rotation_next_degrees(int deg) {
+    return ((rotation_from_degrees(deg) + 1) & 3) * 90;
+}
+
+/* The row's text.  A setting the plan will not honour on this unit (90/180
+ * without VRFB: rotation_plan() gives another quarter) is marked, so the page
+ * never claims an effect it will not have.  Needs <stdio.h>. */
+static inline void rotation_label(char *out, size_t n, int deg, bool vrfb) {
+    int q = rotation_from_degrees(deg);
+    bool honoured = rotation_plan(q, vrfb, false).quarter == q;
+    snprintf(out, n, "ROTATION: %d%s", q * 90, honoured ? "" : " (NEEDS VRFB)");
 }
 
 #endif /* ROTATION_H */

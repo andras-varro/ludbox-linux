@@ -9,8 +9,8 @@
  * ⚠️ There is no SAVE button, on purpose.  -/+ writes backlight_brightness to
  * the config file the moment it changes and reloads common/hardware.c's cache,
  * because the BACKLIGHT RAMP on the same screen drives the panel through
- * hw_set_backlight(), which is scaled by the SAVED value.  The portrait toggle
- * writes or removes the flag file at once for the same reason: what the page
+ * hw_set_backlight(), which is scaled by the SAVED value.  The ROTATION row
+ * writes its key at once for the same reason: what the page
  * shows is what the next launch gets.
  */
 #include "cp_page.h"
@@ -18,14 +18,15 @@
 #include "../common/ui_flow.h"
 #include "../common/common.h"
 #include "../common/hardware.h"
+#include "../common/rotation.h"
 
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <linux/fb.h>
 
-/* Read at launch by fb_init(): present = portrait.  The file's presence is the
- * whole setting; its content is never read. */
+/* Legacy flag, read at launch only when the rotation key is absent
+ * (config_rotation_stored()); the page deletes it whenever it writes the key. */
 #define PORTRAIT_FLAG_FILE  "/opt/games/portrait.mode"
 
 #define DEFAULT_BACKLIGHT_BRIGHTNESS 100
@@ -194,7 +195,8 @@ static const struct {
 /* ── State and persistence ─────────────────────────────────────────────── */
 
 static int  backlight;           /* config key backlight_brightness, 20..100 */
-static bool portrait;            /* PORTRAIT_FLAG_FILE exists */
+static int  rot_deg;             /* config key rotation: 0/90/180/270 (config_rotation_stored) */
+static bool rot_vrfb;            /* /sys/class/graphics/fb0/rotate_type == 2 */
 static int  queued_test = -1;    /* test to run full-screen, -1 none */
 static int  blank_min;           /* config key blank_minutes: 0 = never */
 
@@ -221,7 +223,14 @@ static void display_page_load(const Config *cfg) {
     backlight = clamp_backlight(config_get_int(cfg, "backlight_brightness",
                                                DEFAULT_BACKLIGHT_BRIGHTNESS));
     blank_min = config_blank_minutes(cfg);
-    portrait  = (access(PORTRAIT_FLAG_FILE, F_OK) == 0);
+    rot_deg   = rotation_from_degrees(config_rotation_stored()) * 90;
+    rot_vrfb  = false;
+    FILE *rt = fopen("/sys/class/graphics/fb0/rotate_type", "r");
+    if (rt) {
+        int v = -1;
+        if (fscanf(rt, "%d", &v) == 1) rot_vrfb = (v == 2);
+        fclose(rt);
+    }
 }
 
 /* Writes the key into the FILE by re-reading it, not by saving the caller's
@@ -263,28 +272,30 @@ static void blank_label(char *out, size_t n, int minutes) {
     else              snprintf(out, n, "SCREEN OFF: %d MIN", minutes);
 }
 
-/* Present = portrait on the next launch; the file's content is never read. */
-static void portrait_persist(void) {
-    bool ok;
-    if (portrait) {
-        FILE *pf = fopen(PORTRAIT_FLAG_FILE, "w");
-        ok = pf && fprintf(pf, "1\n") > 0;
-        if (pf && fclose(pf) != 0) ok = false;
-    } else {
-        ok = (unlink(PORTRAIT_FLAG_FILE) == 0 || access(PORTRAIT_FLAG_FILE, F_OK) != 0);
-    }
+/* Writes key rotation= into the file (same re-read shape as the two above) and
+ * removes the legacy portrait flag, so it cannot win later: with the key absent
+ * config_rotation_stored() reads the flag as 270. */
+static void rotation_persist(Config *mem) {
+    config_set_int(mem, "rotation", rot_deg);
+
+    Config disk;
+    config_init(&disk);
+    config_load(&disk);
+    config_set_int(&disk, "rotation", rot_deg);
+    bool ok = (config_save(&disk) == 0);
+    if (unlink(PORTRAIT_FLAG_FILE) != 0 && access(PORTRAIT_FLAG_FILE, F_OK) == 0)
+        ok = false;
     if (!ok) {
-        fprintf(stderr, "control_panel: portrait flag write failed\n");
-        cp_status("PORTRAIT SAVE FAILED - RUN AS ROOT", false);
+        fprintf(stderr, "control_panel: rotation save failed\n");
+        cp_status("ROTATION SAVE FAILED - RUN AS ROOT", false);
     }
 }
 
 /* For the control panel's RESET DEFAULTS, called AFTER config_clear(cfg):
  * removes the key from the file as well, reloads hardware.c's cache and
  * re-applies, so page, file and panel agree on the default — otherwise the
- * backlight keeps a value no longer in the file.  Orientation is not a config
- * key, but landscape is the factory state, so the flag file goes too; the
- * amber note then disappears with the toggle, and the next launch is
+ * backlight keeps a value no longer in the file.  Rotation 0 is the factory
+ * state, so the key and the legacy flag file go too; the next launch is
  * landscape. */
 static void display_page_reset_defaults(Config *cfg) {
     Config disk;
@@ -292,12 +303,12 @@ static void display_page_reset_defaults(Config *cfg) {
     if (config_load(&disk) == 0) {
         config_remove(&disk, "backlight_brightness");
         config_remove(&disk, "blank_minutes");
+        config_remove(&disk, "rotation");
         if (config_save(&disk) != 0)
             fprintf(stderr, "control_panel: backlight default save failed\n");
     }
     hw_reload_config();
-    portrait = false;
-    portrait_persist();
+    unlink(PORTRAIT_FLAG_FILE);
     display_page_load(cfg);
     apply_backlight(backlight);
 }
@@ -353,7 +364,7 @@ static uint32_t geom_rows_format(char *edges, size_t elen, char *reach, size_t r
 
 /* ── Layout ─────────────────────────────────────────────────────────────── */
 
-static ToggleSwitch portrait_toggle;
+static Button       rot_btn;
 static Button       bl_minus_btn, bl_plus_btn;
 static Button       blank_btn;
 static Button       test_btns[DISP_TEST_COUNT];
@@ -363,8 +374,8 @@ static int  note_y, visible_y, edges_y, reach_y, sec_tests_y;
 static bool stacked;      /* backlight controls on their own row under the label */
 
 #define DISP_BL_LABEL        "BACKLIGHT"
-#define DISP_PORTRAIT_LABEL  "PORTRAIT MODE"
-#define DISP_PORTRAIT_NOTE   "ON NEXT LAUNCH - CALIBRATE IN LANDSCAPE"
+#define DISP_ROT_WIDEST      "ROTATION: 180 (NEEDS VRFB)"
+#define DISP_PORTRAIT_NOTE   "ON NEXT LAUNCH - CALIBRATE AT ROTATION 0"
 #define DISP_STEP_BTN_W      45
 #define DISP_STEP_BTN_H      30
 #define DISP_TEST_BTN_H      50
@@ -410,9 +421,12 @@ static void display_page_layout(void) {
     int blank_w = text_measure_width("SCREEN OFF: NEVER", 2) + 24;
     button_init_full(&blank_btn, CONTENT_LEFT + 5, blank_y, blank_w, DISP_STEP_BTN_H,
                      "", RGB(80, 80, 80), COLOR_WHITE, BTN_COLOR_HIGHLIGHT, 2);
-    toggle_init(&portrait_toggle, CONTENT_LEFT + 5, blank_y + DISP_STEP_BTN_H + 16,
-                60, 28, DISP_PORTRAIT_LABEL, portrait);
-    note_y    = portrait_toggle.y + 36;
+    int rot_w = text_measure_width(DISP_ROT_WIDEST, 2) + 24;
+    if (rot_w > CONTENT_WIDTH - 10) rot_w = CONTENT_WIDTH - 10;
+    button_init_full(&rot_btn, CONTENT_LEFT + 5, blank_y + DISP_STEP_BTN_H + 16,
+                     rot_w, DISP_STEP_BTN_H, "", RGB(80, 80, 80), COLOR_WHITE,
+                     BTN_COLOR_HIGHLIGHT, 2);
+    note_y    = rot_btn.y + DISP_STEP_BTN_H + 8;
     visible_y = note_y + 20;
     edges_y   = visible_y + DISP_INFO_ROW_H;
     reach_y   = edges_y + DISP_INFO_ROW_H;
@@ -454,8 +468,7 @@ static void display_page_layout(void) {
         if (fit_value(reach, value_x, 2, cut, sizeof(cut))) clipped++;
         const Button *last = &test_btns[DISP_TEST_COUNT - 1];
         int bottom = (last->y + last->height) - CONTENT_Y;
-        int right  = portrait_toggle.x - 5 + portrait_toggle.track_w
-                   + text_measure_width(DISP_PORTRAIT_LABEL, 1) + 20;
+        int right  = rot_btn.x + rot_btn.width;
         int note_r = CONTENT_LEFT + 5 + text_measure_width(DISP_PORTRAIT_NOTE, 1);
         if (note_r > right) right = note_r;
         if (blank_btn.x + blank_btn.width > right)
@@ -492,9 +505,11 @@ static void display_page_draw(Framebuffer *fb) {
     button_set_text(&blank_btn, bl);
     button_draw(fb, &blank_btn);
 
-    portrait_toggle.state = portrait;   /* derived every frame, never cached */
-    toggle_draw(fb, &portrait_toggle);
-    if (portrait)
+    char rl[48];
+    rotation_label(rl, sizeof(rl), rot_deg, rot_vrfb);
+    button_set_text(&rot_btn, rl);
+    button_draw(fb, &rot_btn);
+    if (rot_deg != 0)
         fb_draw_text(fb, CONTENT_LEFT + 5, note_y, DISP_PORTRAIT_NOTE,
                      RGB(255, 200, 80), 1);
 
@@ -518,10 +533,9 @@ static CpPageResult display_page_input(Config *cfg, int tx, int ty,
                                        bool touching, uint32_t now) {
     CpPageResult act = CP_PAGE_IDLE;
 
-    portrait_toggle.state = portrait;   /* flip from the truth, not a stale widget */
-    if (toggle_check_press(&portrait_toggle, tx, ty, touching, now)) {
-        portrait = portrait_toggle.state;
-        portrait_persist();
+    if (button_update(&rot_btn, tx, ty, touching, now)) {
+        rot_deg = rotation_next_degrees(rot_deg);
+        rotation_persist(cfg);
         act = CP_PAGE_REDRAW;
     }
 
@@ -558,7 +572,7 @@ static CpPageResult display_page_input(Config *cfg, int tx, int ty,
 
 /* Keyboard focus: what input() hit-tests. */
 static int display_page_focusables(UiRect *out, int max) {
-    int n = focus_add_toggle(out, 0, max, &portrait_toggle);
+    int n = focus_add_button(out, 0, max, &rot_btn);
     n = focus_add_button(out, n, max, &bl_minus_btn);
     n = focus_add_button(out, n, max, &bl_plus_btn);
     n = focus_add_button(out, n, max, &blank_btn);
