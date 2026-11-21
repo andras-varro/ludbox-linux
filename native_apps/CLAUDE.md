@@ -39,6 +39,7 @@ IP and the mode *before* compiling anything, and `cd`s to its own directory, so 
 
 | Module | Use it for | Never do this instead |
 |---|---|---|
+| `rotation.h` | the one rotation policy (setting `rotation=`, degrees CW; plan, `var.rotate` table, bezel, touch point); see *Coordinates, dimensions, rotation* | deciding an angle in an app |
 | `framebuffer.c` | double-buffered draw, `fb_swap_rect()` (band-only present, byte-identical to `fb_swap()` inside the rect; `tests/fb_rotate_test.c`), `fb_present_indexed2x()` (a 2x 8-bit indexed image straight into the front buffer: one cached row, memcpy twice per source row, bezel bands untouched; portrait and 16bpp fall back to `fb_store` + `fb_swap`; `tests/framebuffer_present_test.c`), sprite blit, the `SCREEN_VISIBLE_*` / `SCREEN_SAFE_*` macros | writing `/dev/fb0` yourself |
 | `touch_input.c` | touch events, the raw→panel→logical map, publishing the touch inset | reading evdev directly |
 | `touch_calib.c` | measuring that map: targets, fit, verdict, edge sweep, reach→inset, sanity gate, backup | a second copy of the fit or the sweep |
@@ -302,7 +303,7 @@ tells you which value is being misread — and **when a clamp moves, ask what it
 a brick. At effect level 0 the emitted behaviour must come out byte-identical; that is what preserves the
 default feel.
 
-## Coordinates, dimensions, portrait
+## Coordinates, dimensions, rotation
 
 - **Never hardcode 800, 480, or 400.** Use `fb.width` / `fb.height`, `screen_base_width` /
   `screen_base_height`, and the `SCREEN_VISIBLE_*` / `SCREEN_SAFE_*` / `LAYOUT_*` macros. Hardcoding
@@ -318,14 +319,16 @@ default feel.
 - **Guard game logic by state** — ball physics, AI and scoring must not run on the start menu
   page.
 
-Portrait mode (flag file `/opt/games/portrait.mode`):
+Rotation (`rotation=0|90|180|270` in `arca_config.conf`, degrees clockwise; device facts: `SYSTEM_ANALYSIS.md#32-display`):
 
-- `fb_init()` swaps width/height and rotates the safe margins. `fb_swap()` does a 90° CCW
-  rotated copy; landscape is a straight `memcpy`. `touch /opt/games/portrait.mode` for one run is how a portrait layout receipt is captured without tapping.
-- Touch rotates **after** the raw→panel curve, in `scale_coordinates()`.
-- Use `fb.portrait_mode` to branch only when the layout must differ fundamentally (3×2 vs 2×3);
+- `common/rotation.h` is the **one** policy (`rotation_plan`, `rotation_var_rotate`, `rotation_bezel`, `rotation_point`); never
+  re-decide an angle in an app. With VRFB `fb_init()` applies it by one `FBIOPUT` before mmap; without VRFB only 270 survives
+  (software copy in `fb_swap()`), 90/180 become 0. A landscape-only app calls `fb_declare_landscape_only()` **before**
+  `fb_init()` (0/90 give 0, 180/270 give 180). A one-run layout receipt: write `rotation=270` into the config.
+- Touch rotates **after** stage 1 (raw→panel curve) and **before** the bezel subtract (`rotation_point`, `touch_input.c`).
+- Use `fb.portrait_mode` (logical surface is tall) to branch only when the layout must differ fundamentally (3×2 vs 2×3);
   otherwise let the runtime dimensions do the work.
-- **Calibrate in landscape.** Calibration in portrait is not supported.
+- **Calibrate at rotation 0.** The wizard and `touch_raw` refuse a rotated fb; `arca_tap` refuses a non-zero setting.
 
 Surface smaller than the panel (`fb_init(fb, device)` takes any node and accepts whatever geometry it finds):
 

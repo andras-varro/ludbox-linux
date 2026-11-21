@@ -94,7 +94,7 @@ Open **Control Panel** from the launcher. Its pages, from the source:
 | Page | What it does |
 |---|---|
 | Audio | Sound on or off, music and effects, output device (speaker, USB audio, a paired Bluetooth headset), a test chime. |
-| Display | Backlight, portrait or landscape, which screen area is visible and which is touchable, display tests. |
+| Display | Backlight, ROTATION 0/90/180/270 (applies at the next app launch; calibrate touch at 0; needs `optargs=omap2fb.vrfb=y` in p1 `uEnv.txt`, which new card images carry), which screen area is visible and which is touchable, display tests. |
 | LED | The two indicator LEDs: on or off, brightness, tests. |
 | USB | The devices on the USB port; RESCAN revives a port that came up dead. |
 | Bluetooth | Scan, pair, connect, remove; use a headset for audio. Needs a USB Bluetooth adapter, since the unit has no radio. Tested with the TRENDnet TWB-107UB; other adapters are [unverified]. |

@@ -54,7 +54,7 @@ and test behind an icon grid, one page per icon (`control_panel/*_page.c`):
 | Page | What it does |
 |---|---|
 | **Audio** | Audio on/off, music/effects, output device, chime test, Mix Bus Test; saved on each change. |
-| **Display** | Backlight, portrait toggle, the VISIBLE/EDGES/TOUCHABLE readout, BACKLIGHT RAMP, TEST PATTERNS and SCREEN EDGES. |
+| **Display** | Backlight, ROTATION 0/90/180/270, the VISIBLE/EDGES/TOUCHABLE readout, BACKLIGHT RAMP, TEST PATTERNS and SCREEN EDGES. |
 | **LED** | Enable, brightness and the six LED tests, each full-screen. |
 | **USB** | The device list, RESCAN and port recovery. |
 | **Input** | Touch CALIBRATE (the wizard that writes both lines of `/etc/touch_calibration.conf`, see below), DIAGNOSTIC, MULTI-TOUCH, RESET GEOMETRY, and keyboard, mouse and gamepad testers that enable only when such a device is present. |
@@ -62,8 +62,7 @@ and test behind an icon grid, one page per icon (`control_panel/*_page.c`):
 
 #### The calibration wizard
 
-CALIBRATE (Input page) refuses to run in portrait; the Display page's portrait toggle carries a
-"CALIBRATE IN LANDSCAPE" note.
+CALIBRATE (Input page) refuses to run while rotated; calibrate with ROTATION at 0.
 
 CALIBRATE runs a five-step wizard that writes **both** lines of
 `/etc/touch_calibration.conf`. Every step runs with the bezel zeroed on the full 800×480 panel,

@@ -928,18 +928,20 @@ group_c() {
 # 2026-11-01: README.md 166 -> 167 and native_apps/CLAUDE.md 780 -> 782 for the two-finger pause that replaced every game's on-screen
 # menu button: the user's only touch route to the pause menu, and the authoring rule for a game (operator decision).
 # 2026-11-20: native_apps/CLAUDE.md 782 -> 783 for the avrcp_player.c / avrcp_logic.c row (the BlueZ player module; operator decision).
+# 2026-11-20: SYSTEM_ANALYSIS.md 1850 -> 1861 for the VRFB rotation facts (omap2fb.* parameter name, DMA-rotate underflow, VRFB geometry and cost, all measured on .188; no
+# other document holds them) and native_apps/CLAUDE.md 783 -> 786 for the rotation.h row and the rotation model that replaced the portrait.mode text.
 #
 ceilings() {
     # `CEILINGS_FILE` exists only so --self-test can drive this group over a fixture table.
     if [ -n "${CEILINGS_FILE:-}" ]; then cat "$CEILINGS_FILE"; return; fi
     cat <<'EOF'
-1850	SYSTEM_ANALYSIS.md
+1861	SYSTEM_ANALYSIS.md
 1362	IMPROVEMENT_PLAN.md
 224	HARDWARE.md
 167	README.md
 208	DEVELOPING.md
 342	CLAUDE.md
-783	native_apps/CLAUDE.md
+786	native_apps/CLAUDE.md
 232	lib/CLAUDE.md
 106	device-files/CLAUDE.md
 324	tests/CLAUDE.md

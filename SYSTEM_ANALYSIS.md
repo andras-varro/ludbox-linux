@@ -169,6 +169,18 @@ $ ls /dev/dri /sys/class/drm
 
 Backlight: `/sys/class/leds/backlight/brightness`, 0–100.
 
+**Rotation is VRFB or nothing, and the boot argument is `omap2fb.vrfb=y`.** The module is named `omap2fb`
+(`drivers/video/fbdev/omap2/omapfb/Makefile`, `omap2fb-y`), so its parameters are `omap2fb.*`:
+`omap2fb.vrfb=y` works, `omapfb.vrfb=y` is silently ignored (measured, `.188`). Without it `fb0/rotate_type`
+is 1 (DMA) and **any rotate or mirror underflows the DISPC GFX FIFO, disables the overlay and blacks the panel**
+(measured, 32 and 16 bpp). With it `rotate_type` is 2, `line_length` is 8192 at 32 bpp, and
+`FBIOPUT_VSCREENINFO` `var.rotate` 0..3 works at 0 and 180 as is; **90 and 270 need `xres`/`yres` swapped
+(480×800) in the same PUT** — at 800×480 DSS refuses them ("illegal configuration", measured). Writes cost
+about 5–10 % more than plain (`vis_bench`, cached-row upscale 3.65 against 3.4 ms/frame), and a second
+framebuffer must be sized for `omap_vrfb_min_phys_size` (frame plus wrap rows) or `OMAPFB_SETUP_MEM` fails
+(retro's `fb1`, measured). Which of `var.rotate` 1 and 3 is clockwise on the panel is `[inferred]` from
+`omapfb-main.c`'s `FB_ROTATE_*` handling; no panel check yet. The policy is `native_apps/common/rotation.h`.
+
 **Gotcha — bpp is per-app and set at runtime.** `/dev/fb0`'s format is **global mutable state**:
 whatever the running app last selected via `FBIOPUT_VSCREENINFO`.
 
@@ -1665,7 +1677,7 @@ on `.188` under our chain (`/proc/cmdline`, 2026-10-11) is U-Boot's words up to 
 | Word | Comes from | Read by |
 |---|---|---|
 | `console=ttyO1,115200n8` | U-Boot (`${console}`) | the kernel console: UART2 gets every printk ([§3.12](#312-serial-ports)) |
-| `vram=12M` | U-Boot | **nothing**: the `omapfb` parameter is `omapfb.vram` (`module_param_named` in `omapfb-main.c`, built in), so this bare word ends in init's environment — measured, `/proc/1/environ` on `.188`. The value `12M` is `[inferred]` from the vendor's unexpanded `${vram}` |
+| `vram=12M` | U-Boot | **nothing**: the parameter is `omap2fb.vram` (`module_param_named` in `omapfb-main.c`; module name `omap2fb` per `omap2fb-y` in the Makefile, read from source; built in), so this bare word ends in init's environment — measured, `/proc/1/environ` on `.188`. The value `12M` is `[inferred]` from the vendor's unexpanded `${vram}` |
 | `initcall_blacklist=fb_logo_late_init` | U-Boot | `init/main.c`: skips `fb_logo_late_init` (`drivers/video/logo/logo.c`), which marks the boot logos freed; skipped, they stay usable `[inferred]` |
 | `consoleblank=0` | U-Boot | `drivers/tty/vt/vt.c` (`core_param`): the text console never blanks |
 | `mpurate=auto` | U-Boot | **nothing**: no occurrence in the 4.14.52 tree, and it is in init's environment (measured, as `vram`). Inherited from the Overo lineage `[inferred]` |
