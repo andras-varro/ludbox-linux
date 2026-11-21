@@ -141,9 +141,10 @@ reconnect_all() {
     sleep "$wait"
     [ "$(hci_tok)" = "$1" ] || return   # a newer adapter instance: the watcher starts over for it
     # A Connect to an absent device holds the controller for seconds (measured on .188: one
-    # A2DP write blocked 7.8 s), so no round is made while a transport is streaming.
-    n=0
-    while streaming && [ "$n" -lt 20 ]; do n=$((n + 1)); sleep 30; done
+    # A2DP write blocked 7.8 s), so no round is made while a transport is streaming -- however
+    # long it streams: a capped wait paged an absent keyboard every 12 min into a playing
+    # speaker (measured on .188, each page a ~5 s A2DP stall). A pad or keyboard pages us itself.
+    while streaming; do sleep 30; done
     left=0
     for d in $(candidates "$addr"); do
       p="/org/bluez/$HCI/dev_$(echo "$d" | tr : _)"
