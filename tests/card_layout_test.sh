@@ -110,6 +110,7 @@ else
 fi
 if [ -f "$REPO_DIR/uboot/uEnv.txt" ]; then
     expect_eq "" "$(grep -o 'root=/dev/mmcblk0p[0-9]*' "$REPO_DIR/uboot/uEnv.txt" | grep -v 'p3$')" "uboot/uEnv.txt names no root= but p3"
+    expect_eq "1" "$(grep -c '^optargs=.*omap2fb\.vrfb=y' "$REPO_DIR/uboot/uEnv.txt")" "uboot/uEnv.txt has an uncommented optargs= line with omap2fb.vrfb=y (the card builder copies it to p1 verbatim)"
 else
     bad "no uboot/uEnv.txt"
 fi

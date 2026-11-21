@@ -261,6 +261,20 @@ static int ov_init(void)
     return 0;
 }
 
+/* With omap2fb.vrfb=y the driver (omapfb check_fb_size -> omap_vrfb_min_phys_size)
+ * demands the frame PLUS (2048 - width rounded up to 32 bytes) * 32 rows * bytespp
+ * of "wrap" space, or the mode PUT fails and the overlay never configures.
+ * Without VRFB (rotate_type 1) the pad is not needed. */
+static size_t ov_vrfb_extra(unsigned w)
+{
+    char t[16] = "";
+    FILE *f = fopen("/sys/class/graphics/fb1/rotate_type", "r");
+    if (f) { if (!fgets(t, sizeof t, f)) t[0] = 0; fclose(f); }
+    if (atoi(t) != 2) return 0;
+    unsigned ru = (w + 15) & ~15u;                  /* 16bpp: 32-byte pages */
+    return ru >= 2048 ? 0 : (size_t)(2048 - ru) * 32 * 2;
+}
+
 static int ov_config(unsigned w, unsigned h, float aspect)
 {
     struct ofb_plane pl = ov_porig; pl.enabled = 0;
@@ -268,11 +282,11 @@ static int ov_config(unsigned w, unsigned h, float aspect)
     if (ov_map) { munmap(ov_map, ov_maplen); ov_map = NULL; }
     for (ov_pages = 2; ov_pages >= 1; ov_pages--) {
         struct ofb_mem mi = ov_morig;
-        mi.size = (uint32_t)(((size_t)w * h * 2 * ov_pages + 4095) & ~(size_t)4095);
+        mi.size = (uint32_t)(((size_t)w * h * 2 * ov_pages + ov_vrfb_extra(w) + 4095) & ~(size_t)4095);
         if (ioctl(fd1, OMAPFB_SETUP_MEM, &mi) < 0) continue;
         struct fb_var_screeninfo v = ov_orig;
         v.xres = v.xres_virtual = w; v.yres = h; v.yres_virtual = h * ov_pages;
-        v.xoffset = v.yoffset = 0; v.bits_per_pixel = 16; v.rotate = 0; v.nonstd = 0;
+        v.xoffset = v.yoffset = 0; v.bits_per_pixel = 16; v.rotate = orig0.rotate; v.nonstd = 0;   /* follow fb0: VRFB 180 must turn the overlay too */
         memset(&v.red, 0, 3 * sizeof v.red); memset(&v.transp, 0, sizeof v.transp);
         v.red.offset = 11; v.red.length = 5; v.green.offset = 5; v.green.length = 6; v.blue.length = 5;
         v.activate = FB_ACTIVATE_NOW;
