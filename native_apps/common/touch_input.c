@@ -250,7 +250,8 @@ int touch_init(TouchInput *touch, const char *device) {
 
     touch->calib.enabled = false;
 
-    // The effective rotation fb_init() applied (touch_init() runs after it)
+    // The effective rotation fb_init() applied; ScummVM runs touch_init() before
+    // fb_init(), so touch_set_screen_size() re-reads it
     touch->rotation = screen_rotation & 3;
     touch->portrait_mode = rotation_is_tall(touch->rotation);
 
@@ -293,6 +294,10 @@ void touch_set_screen_size(TouchInput *touch, int width, int height) {
     touch->panel_height = screen_panel_height;
     touch->view_x       = screen_view_x;
     touch->view_y       = screen_view_y;
+    // ...and the rotation fb_init() applied: ScummVM constructs its touch
+    // state before the framebuffer exists, when screen_rotation is still 0.
+    touch->rotation      = screen_rotation & 3;
+    touch->portrait_mode = rotation_is_tall(touch->rotation);
     LIB_LOG(touch_note, "Touch screen size set to: %dx%d (panel %dx%d, view %d,%d)",
            width, height, touch->panel_width, touch->panel_height,
            touch->view_x, touch->view_y);

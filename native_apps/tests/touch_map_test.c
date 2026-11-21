@@ -387,6 +387,17 @@ int main(void) {
     expect_map("F14 low X, high Y", rot180_fx(),    0, 4095, 799,   0);
     expect_map("F15 high X, low Y", rot180_fx(), 4095,    0,   0, 479);
 
+    /* ScummVM builds its touch state before fb_init(), when screen_rotation is
+     * still 0; touch_set_screen_size() after fb_init() must pick the rotation up. */
+    {
+        TouchInput t; memset(&t, 0, sizeof t);
+        int saved = screen_rotation;
+        screen_rotation = ROT_180;
+        touch_set_screen_size(&t, 800, 480);
+        expect("F16 set_screen_size re-reads rotation", t.rotation, ROT_180);
+        screen_rotation = saved;
+    }
+
     printf("G  stage 2: the viewport origin is SUBTRACTED\n");
     expect_map("G1 centre less the origin", bezel_fx(), 2048, 2048, 391, 219);
     expect_map("G2 off-axis point",         bezel_fx(), 1024, 3072, 191, 339);

@@ -288,7 +288,7 @@ static int ov_config(unsigned w, unsigned h, float aspect)
         if (ioctl(fd1, OMAPFB_SETUP_MEM, &mi) < 0) continue;
         struct fb_var_screeninfo v = ov_orig;
         v.xres = v.xres_virtual = w; v.yres = h; v.yres_virtual = h * ov_pages;
-        v.xoffset = v.yoffset = 0; v.bits_per_pixel = 16; v.rotate = orig0.rotate; v.nonstd = 0;   /* follow fb0: VRFB 180 must turn the overlay too */
+        v.xoffset = v.yoffset = 0; v.bits_per_pixel = 16; v.rotate = var0.rotate; v.nonstd = 0;   /* follow fb0 as set by fb0_open (not orig0: the launcher's tall rotate); VRFB 180 must turn the overlay too */
         memset(&v.red, 0, 3 * sizeof v.red); memset(&v.transp, 0, sizeof v.transp);
         v.red.offset = 11; v.red.length = 5; v.green.offset = 5; v.green.length = 6; v.blue.length = 5;
         v.activate = FB_ACTIVATE_NOW;
