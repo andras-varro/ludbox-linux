@@ -448,6 +448,9 @@ static long old_play_tone(Fake *f, int rate, int freq, int ms, int16_t *mono,
 
 #define RATE 44100
 
+static uint32_t br_now;
+static uint32_t br_clock(void) { return br_now; }
+
 int main(void)
 {
     static int16_t mono[1 << 17];
@@ -1832,6 +1835,31 @@ int main(void)
         check(audio_out_channels_for_pcm(NULL, 1) == 1 &&
               audio_out_channels_for_pcm("plug:bluealsa", 0) == 0,
               "CH5 NULL name and a zero request pass through unchanged");
+    }
+
+    printf("\n=== BR. a stall refusal of Bluetooth expires (injected clock) ===\n");
+    {
+        audio_out_set_clock(br_clock);
+        br_now = 1000000u;
+        audio_out_note_stall("plug:bluealsa");
+        check(audio_out_bt_refused(), "BR1 a stalled Bluetooth sink is refused at once");
+        br_now += 14000u;
+        check(audio_out_bt_refused(), "BR2 still refused 14 s later (inside the back-off)");
+        br_now += 46000u;   /* t+60 s, link signature unchanged throughout */
+        check(!audio_out_bt_refused(),
+              "BR3 NOT refused at t+60 s with the link unchanged: Bluetooth is retried");
+        br_now += 10000u;
+        audio_out_note_stall("plug:bluealsa");     /* stalls again soon after the retry */
+        br_now += 20000u;
+        check(audio_out_bt_refused(),
+              "BR4 a repeat stall backs off for longer than 15 s (30 s)");
+        br_now += 11000u;
+        check(!audio_out_bt_refused(), "BR5 and the longer back-off still ends");
+        br_now += 200000u;                         /* played fine for a long while */
+        audio_out_note_stall("plug:bluealsa");
+        br_now += 16000u;
+        check(!audio_out_bt_refused(), "BR6 a stall long after a retry is back to 15 s");
+        audio_out_set_clock(NULL);
     }
 
     printf("\n%s  %d checks, %d failure(s)\n",

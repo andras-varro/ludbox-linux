@@ -994,6 +994,14 @@ static uint32_t probe_now_ms(void);
 /** The real probe: defined by the backend below (the host stub answers false). */
 static bool bt_probe_pcm(const char *pcm);
 
+/* The module's millisecond clock; a test replaces it (audio_out_set_clock). */
+static uint32_t (*audio_clock)(void) = NULL;
+
+void audio_out_set_clock(uint32_t (*now_ms)(void))
+{
+    audio_clock = now_ms;
+}
+
 /* Two answers per probe, one per Bluetooth tier, and a refusal for each: the
  * pinned headset (bt_pin_pcm) and any connected sink (plug:bluealsa). */
 static AudioOutBtGate bt_gate;
@@ -1001,6 +1009,64 @@ static bool bt_pin_seen    = false;   /* the last probe's answers               
 static bool bt_any_seen    = false;
 static bool bt_pin_refused = false;   /* a sink that would not open: until a change */
 static bool bt_any_refused = false;
+
+/* A STALL refusal (a radio that paged an absent device for seconds while the
+ * link stayed up) is timed: it expires, so audio_out_usb_returned() moves the
+ * stream back.  An open failure stays "until a link change" (timed = false).
+ * The back-off doubles when the sink stalls again soon after it was retried. */
+#define BT_RETRY_MS         15000u
+#define BT_RETRY_MAX_MS     120000u
+#define BT_RETRY_SOON_MS    60000u    /* a stall this soon after a retry doubles */
+static bool     bt_pin_timed = false, bt_any_timed = false;
+static uint32_t bt_pin_until = 0,     bt_any_until = 0;
+static uint32_t bt_backoff_ms = 0;
+static uint32_t bt_retry_ms = 0;      /* when the last refusal expired */
+static bool     bt_retry_set = false;
+
+static void bt_refusals_clear(void)
+{
+    bt_pin_refused = bt_any_refused = false;
+    bt_pin_timed = bt_any_timed = false;
+}
+
+static void bt_stall_refuse(bool pin)
+{
+    uint32_t now = probe_now_ms();
+    if (bt_backoff_ms == 0 || !bt_retry_set ||
+        (uint32_t)(now - bt_retry_ms) >= BT_RETRY_SOON_MS)
+        bt_backoff_ms = BT_RETRY_MS;
+    else if ((bt_backoff_ms *= 2) > BT_RETRY_MAX_MS)
+        bt_backoff_ms = BT_RETRY_MAX_MS;
+    if (pin) { bt_pin_refused = bt_pin_timed = true; bt_pin_until = now + bt_backoff_ms; }
+    else     { bt_any_refused = bt_any_timed = true; bt_any_until = now + bt_backoff_ms; }
+}
+
+static void bt_refusals_expire(void)
+{
+    uint32_t now = probe_now_ms();
+    if (bt_pin_refused && bt_pin_timed && (int32_t)(now - bt_pin_until) >= 0) {
+        bt_pin_refused = bt_pin_timed = false;
+        bt_retry_ms = now; bt_retry_set = true;
+    }
+    if (bt_any_refused && bt_any_timed && (int32_t)(now - bt_any_until) >= 0) {
+        bt_any_refused = bt_any_timed = false;
+        bt_retry_ms = now; bt_retry_set = true;
+    }
+}
+
+void audio_out_note_stall(const char *pcm)
+{
+    if (!pcm) return;
+    if (bt_pin_pcm[0] && strcmp(pcm, bt_pin_pcm) == 0)        bt_stall_refuse(true);
+    else if (strcmp(pcm, AUDIO_BT_PCM) == 0)                  bt_stall_refuse(false);
+    else if (strcmp(pcm, audio_out_device_pcm(AUDIO_DEV_USB)) == 0) usb_refused = true;
+}
+
+bool audio_out_bt_refused(void)
+{
+    bt_refusals_expire();
+    return bt_pin_refused || bt_any_refused;
+}
 
 /* The gate, then on a due probe the pinned name first.  "Any" is asked only
  * while the pin is absent, because only then is it consulted — and that keeps
@@ -1011,9 +1077,10 @@ static void bt_refresh(void)
 {
     bool changed = false;
     uint32_t sig = audio_out_bt_acl_signature(AUDIO_BT_SYSFS);
+    bt_refusals_expire();
     bool due = audio_out_bt_probe_due(&bt_gate, sig, probe_now_ms(), &changed);
     if (changed) {
-        bt_pin_refused = bt_any_refused = false;
+        bt_refusals_clear();
         if (sig == 0) bt_pin_seen = bt_any_seen = false;
     }
     if (due) {
@@ -1053,7 +1120,7 @@ static void bt_pcm_rebuild(void)
     snprintf(bt_pin_pcm, sizeof(bt_pin_pcm), "%s", name);
     bt_gate.have_sig = false;
     bt_pin_seen    = bt_any_seen    = false;
-    bt_pin_refused = bt_any_refused = false;
+    bt_refusals_clear();
 }
 
 bool audio_out_bt_is_pinned(int saved_choice, const char *saved_addr,
@@ -1320,6 +1387,7 @@ fail:
 
 static uint32_t stall_now_ms(void)
 {
+    if (audio_clock) return audio_clock();
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return audio_ms_from_timeval((long)ts.tv_sec, (long)(ts.tv_nsec / 1000));
@@ -1344,16 +1412,14 @@ static bool alsa_stalled(AlsaCtx *a, long in_flight)
     return (uint32_t)(now - a->progress_ms) >= ALSA_STALL_MS;
 }
 
-/** A stalled PCM is refused like one that would not open — the same flags,
- *  cleared by the same return (a Bluetooth link change, a USB replug), so the
- *  reopen takes the next tier instead of the stalled sink, and the pinned
- *  headset still wins the stream back when it reconnects.  Onboard has no
+/** A stalled PCM is refused so the reopen takes the next tier instead of the
+ *  stalled sink.  A Bluetooth refusal expires after a back-off (the link can
+ *  stay up through a radio stall), a USB one lasts until a replug, and a link
+ *  change clears both, so the pinned headset wins the stream back.  Onboard has no
  *  tier below it and is simply reopened. */
 static void alsa_refuse_stalled(const char *pcm)
 {
-    if (bt_pin_pcm[0] && strcmp(pcm, bt_pin_pcm) == 0)            bt_pin_refused = true;
-    else if (strcmp(pcm, AUDIO_BT_PCM) == 0)                      bt_any_refused = true;
-    else if (strcmp(pcm, audio_out_device_pcm(AUDIO_DEV_USB)) == 0) usb_refused   = true;
+    audio_out_note_stall(pcm);   /* Bluetooth: timed; USB: until a replug */
 }
 
 static int alsa_space(void *ctx, int frame_bytes, AudioOutSpace *sp)
@@ -1541,6 +1607,7 @@ static const char *device_label(const char *path)
  *  same arithmetic, audio_ms_from_timeval(). */
 static uint32_t probe_now_ms(void)
 {
+    if (audio_clock) return audio_clock();
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return audio_ms_from_timeval((long)ts.tv_sec, (long)(ts.tv_nsec / 1000));
@@ -1578,11 +1645,11 @@ int audio_out_open_resolved(AudioOut *out, int rate_req, int channels_req,
             return 0;
         }
         if (strcmp(path, AUDIO_DEV_BT_PIN) == 0) {
-            bt_pin_refused = true;
+            bt_pin_refused = true, bt_pin_timed = false;
             fprintf(stderr, "audio_out: %s will not open — not using it until a "
                     "Bluetooth link changes\n", device_label(AUDIO_DEV_BT_PIN));
         } else if (strcmp(path, AUDIO_DEV_BT) == 0) {
-            bt_any_refused = true;
+            bt_any_refused = true, bt_any_timed = false;
             fprintf(stderr, "audio_out: %s will not open — not using it until a "
                     "Bluetooth link changes\n", device_label(AUDIO_DEV_BT));
         } else if (strcmp(path, AUDIO_DEV_USB) == 0) {

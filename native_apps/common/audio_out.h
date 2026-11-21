@@ -438,6 +438,19 @@ bool audio_out_bt_probe_due(AudioOutBtGate *g, uint32_t sig, uint32_t now_ms,
  *  probe window.  A probe that finds the sink BUSY counts as present. */
 bool audio_out_bt_present(void);
 
+/** A Bluetooth sink that STALLED (the radio paged an absent device for seconds
+ *  while the link stayed up) is refused for a back-off, not for good: 15 s,
+ *  doubling to 2 min when it stalls again within 60 s of the retry.  When the
+ *  refusal expires the resolver offers Bluetooth again and
+ *  audio_out_usb_returned() moves the stream back.  A sink that will not OPEN
+ *  stays refused until a link change.  `audio_out_note_stall()` is the ALSA
+ *  backend's report (and the test's); `audio_out_bt_refused()` is whether either
+ *  Bluetooth tier is refused now.  `audio_out_set_clock()` replaces the module's
+ *  millisecond clock (NULL restores CLOCK_MONOTONIC): a test hook. */
+void audio_out_note_stall(const char *pcm);
+bool audio_out_bt_refused(void);
+void audio_out_set_clock(uint32_t (*now_ms)(void));
+
 /* ── Which device ───────────────────────────────────────────────────────────
  *
  * ⚠️ **One home for "which `/dev/dsp*`", and every opener in the tree resolves
