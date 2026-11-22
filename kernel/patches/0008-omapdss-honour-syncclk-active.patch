@@ -1,6 +1,6 @@
 omapdss: honour DT syncclk-active in videomode_to_omap_video_timings().
 Upstream copies data_pclk_edge to sync_pclk_edge. The vendor panel needs sync
-on the falling edge with data on the rising edge, so use DISPLAY_FLAGS_SYNC_POSEDGE
+on the falling edge independently of the data edge, so use DISPLAY_FLAGS_SYNC_POSEDGE
 / SYNC_NEGEDGE when the DT gives them; otherwise keep the upstream behaviour.
 
 --- a/drivers/video/fbdev/omap2/omapfb/dss/display.c	2026-11-15 11:37:05.020912610 -0500
@@ -11,7 +11,7 @@ on the falling edge with data on the rising edge, so use DISPLAY_FLAGS_SYNC_POSE
  
 -	ovt->sync_pclk_edge = ovt->data_pclk_edge;
 +	/* Honour DT syncclk-active when given; the vendor panel needs sync on
-+	 * the falling edge with data on the rising one. */
++	 * the falling edge, whatever the data edge. */
 +	if (vm->flags & DISPLAY_FLAGS_SYNC_POSEDGE)
 +		ovt->sync_pclk_edge = OMAPDSS_DRIVE_SIG_RISING_EDGE;
 +	else if (vm->flags & DISPLAY_FLAGS_SYNC_NEGEDGE)

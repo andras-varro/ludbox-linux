@@ -237,7 +237,7 @@ $ cat /sys/devices/platform/omapdss/display0/timings
 | Refresh | 33230770 / (1056 × 524) = **60.05 Hz** |
 | Bus format | 24-bit RGB888 DPI (`data-lines = <24>`) |
 | Panel GPIOs | pwrdn `gpio1[14]`, lvds `gpio1[15]`, backlight `gpio1[19]` — all active-high |
-| Polarity | hsync, vsync **active-low**; DE **active-high**; data on the **rising** pixel-clock edge, sync on the **falling** one — **measured** from the vendor driver's probe immediates (the sysfs string omits it) |
+| Polarity | hsync, vsync **active-low**; DE **active-high**; data driven on the **falling** pixel-clock edge (DISPC `POL_FREQ` IPC=1, DT `pixelclk-active = <0>`): on the rising edge the panel draws red dotted contours and speckle across photo gradients that `/dev/fb0` does not contain — **measured** at the panel, IPC toggled live [n=1 unit]. Sync on the **falling** edge (RF=0); toggling RF changed nothing at the panel. The vendor driver's probe immediates were read as data-on-rising [unverified] |
 | Power sequence | enable: DPI on, `msleep(50)`, then pwrdn → lvds → backlight high; disable: all three low, `msleep(100)`, DPI off — **measured** from the vendor `sharp_lq_enable`/`_disable` disassembly |
 
 With these numbers the panel needs no custom driver on any kernel: it reduces to a stock

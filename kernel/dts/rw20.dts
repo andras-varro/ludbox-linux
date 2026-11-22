@@ -100,7 +100,9 @@
 			hsync-active = <0>;
 			vsync-active = <0>;
 			de-active = <1>;
-			pixelclk-active = <1>;
+			/* Data driven on the falling edge (DISPC IPC=1). Measured at the panel: the
+			 * rising edge (<1>) draws red dotted contours across photo gradients. */
+			pixelclk-active = <0>;
 			syncclk-active = <0>;
 		};
 
