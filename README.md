@@ -4,6 +4,12 @@ Ludbox Linux turns a Steelcase RoomWizard wall display into a small games and ap
 seven touch games, a touch instrument, a terminal, a classic-adventure engine (ScummVM),
 a remote-desktop viewer and a settings app. It runs from its own microSD card (section 1).
 
+It also runs classic consoles and computers through libretro emulators (the **Retro** app):
+NES, SNES, Mega Drive, 32X, Master System, Game Gear, PlayStation, Amiga, DOS and arcade
+(MAME 2003-Plus). Commodore 64, ZX Spectrum and Enterprise 128 work too, but are built from
+source rather than shipped. **No games, ROMs or BIOS images are included**; you bring your
+own. Details: [`retro/README.md`](retro/README.md).
+
 Everything runs on the display's own 600 MHz processor with no graphics chip, so expect
 simple games, not modern ones. No Wi-Fi is fitted; the unit uses its Ethernet cable,
 which is also its power (PoE).
